@@ -1,0 +1,46 @@
+spring:
+  # Local Database Configuration (Aligned with AF-003)
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/autofolio_dev}
+    username: ${POSTGRES_USER:autofolio_user}
+    password: ${POSTGRES_PASSWORD:autofolio_pass}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # Database Migrations
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  # Local Mail (e.g., Mailtrap or Local Docker SMTP)
+  mail:
+    host: localhost
+    port: 1025
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+# Logging Strategy
+logging:
+  level:
+    root: INFO
+    com.autofolio: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+# Cloudinary Mock/Dev Values
+cloudinary:
+  cloud-name: dev-cloud
+  api-key: dev-key
+  api-secret: dev-secret

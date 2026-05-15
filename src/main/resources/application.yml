@@ -1,35 +1,19 @@
-server:
-  port: 8080
-
 spring:
   application:
     name: autofolio-api
   
-  # Java 21 Virtual Threads Activation
+  # Java 21 Virtual Threads Activation (Global)
   threads:
     virtual:
       enabled: true
 
-  # Database Configuration (Placeholders for now)
-  datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/autofolio}
-    username: ${DATABASE_USERNAME:postgres}
-    password: ${DATABASE_PASSWORD:postgres}
-  
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+  # Common JSON Formatting
+  jackson:
+    date-format: yyyy-MM-dd'T'HH:mm:ss.SSSZ
+    serialization:
+      write-dates-as-timestamps: false
 
-  # Flyway configuration
-  flyway:
-    enabled: true
-    baseline-on-migrate: true
-
-# Monitoring
+# Monitoring & Health
 management:
   endpoints:
     web:
@@ -37,13 +21,11 @@ management:
         include: health,info,metrics
   endpoint:
     health:
-      show-details: always
+      show-details: when_authorized
 
-# Documentation
+# API Documentation Base
 springdoc:
   api-docs:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
-    operations-sorter: alpha
-    tags-sorter: alpha
