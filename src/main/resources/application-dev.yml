@@ -39,8 +39,8 @@ logging:
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
 
-# Cloudinary Mock/Dev Values
+# Cloudinary Configuration
 cloudinary:
-  cloud-name: dev-cloud
-  api-key: dev-key
-  api-secret: dev-secret
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
