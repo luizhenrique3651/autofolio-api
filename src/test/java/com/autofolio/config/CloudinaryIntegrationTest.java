@@ -1,5 +1,7 @@
 package com.autofolio.config;
 
+import com.autofolio.auth.repository.UserProfileRepository;
+import com.autofolio.auth.repository.UserRepository;
 import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
 import org.junit.jupiter.api.DisplayName;
@@ -7,6 +9,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.io.IOException;
@@ -26,10 +29,15 @@ public class CloudinaryIntegrationTest {
     @Autowired
     private Cloudinary cloudinary;
 
+    @MockBean
+    private UserRepository userRepository;
+
+    @MockBean
+    private UserProfileRepository userProfileRepository;
+
     @Test
     @DisplayName("Deve realizar upload de uma imagem real para validar a integração com Cloudinary")
     void shouldUploadImageSuccessfullyWhenCloudinaryIsConfigured() throws IOException {
-        // Arrange
         String fordLogoUrl = "https://upload.wikimedia.org/wikipedia/commons/a/a0/Ford_Motor_Company_Logo.svg";
 
         Map<String, Object> options = ObjectUtils.asMap(
@@ -37,10 +45,8 @@ public class CloudinaryIntegrationTest {
             "public_id", "ford_logo_test_" + System.currentTimeMillis()
         );
 
-        // Act
         Map uploadResult = cloudinary.uploader().upload(fordLogoUrl, options);
 
-        // Assert
         assertThat(uploadResult).isNotNull();
         assertThat(uploadResult.get("public_id")).isNotNull();
         assertThat(uploadResult.get("secure_url")).isNotNull();
