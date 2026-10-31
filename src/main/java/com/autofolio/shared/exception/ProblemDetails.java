@@ -1,5 +1,7 @@
 package com.autofolio.shared.exception;
 
+import com.autofolio.shared.web.RequestIdFilter;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
@@ -62,6 +64,7 @@ public final class ProblemDetails {
         if (problemDetail.getProperties() == null || !problemDetail.getProperties().containsKey("timestamp")) {
             problemDetail.setProperty("timestamp", Instant.now());
         }
+        addRequestId(problemDetail);
     }
 
     private static Label labelFor(HttpStatusCode code) {
@@ -82,6 +85,15 @@ public final class ProblemDetails {
         problemDetail.setTitle(label.title());
         problemDetail.setType(URI.create(TYPE_BASE + label.slug()));
         problemDetail.setProperty("timestamp", Instant.now());
+        addRequestId(problemDetail);
         return problemDetail;
+    }
+
+    // Permite ao cliente citar o mesmo id que aparece nos logs e no header X-Request-Id
+    private static void addRequestId(ProblemDetail problemDetail) {
+        var requestId = MDC.get(RequestIdFilter.MDC_KEY);
+        if (requestId != null) {
+            problemDetail.setProperty("requestId", requestId);
+        }
     }
 }

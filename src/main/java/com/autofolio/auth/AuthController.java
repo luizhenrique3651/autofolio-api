@@ -7,6 +7,7 @@ import com.autofolio.auth.dto.LoginResponse;
 import com.autofolio.auth.dto.RefreshRequest;
 import com.autofolio.auth.dto.RefreshResponse;
 import com.autofolio.auth.dto.RegisterRequest;
+import com.autofolio.auth.dto.ResetPasswordRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
@@ -74,5 +75,17 @@ public class AuthController {
     public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         authService.forgotPassword(request);
         return ResponseEntity.accepted().build();
+    }
+
+    /**
+     * Redefine a senha com o token de recuperação.
+     */
+    @Operation(summary = "Redefinição de senha", description = "Recebe o token enviado por e-mail e a nova senha (mínimo 8 caracteres, 1 número e 1 letra maiúscula). O token é de uso único e todos os refresh tokens do usuário são revogados.")
+    @ApiResponse(responseCode = "200", description = "Senha redefinida com sucesso")
+    @ApiResponse(responseCode = "400", description = "Token inválido, expirado ou já utilizado (resposta idêntica), ou nova senha fora da política")
+    @PostMapping("/reset-password")
+    public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok().build();
     }
 }

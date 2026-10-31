@@ -27,8 +27,9 @@ public class PasswordResetToken {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(nullable = false, unique = true)
-    private String token;
+    // SHA-256 (hex) do token enviado por e-mail; o token cru nunca é persistido
+    @Column(name = "token_hash", nullable = false, unique = true)
+    private String tokenHash;
 
     @Column(name = "expires_at", nullable = false)
     private OffsetDateTime expiresAt;

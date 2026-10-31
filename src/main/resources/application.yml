@@ -58,3 +58,12 @@ jwt:
 app:
   mail:
     from: ${MAIL_FROM:noreply@autofolio.com}
+
+# Pattern de log com o requestId (MDC) para rastrear a requisição, inclusive nas tarefas @Async
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%X{requestId}] %logger{36} - %msg%n"
+
+# URL do frontend (CORS e link do e-mail de redefinição de senha); FRONTEND_URL vem do .env
+frontend:
+  url: ${FRONTEND_URL:http://localhost:5173}

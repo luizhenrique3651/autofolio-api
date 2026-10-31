@@ -1,5 +1,6 @@
 package com.autofolio.auth;
 
+import com.autofolio.config.FrontendProperties;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,7 @@ class PasswordResetMailerTest {
 
     private final JavaMailSender sender = mock(JavaMailSender.class);
     private final PasswordResetMailer mailer =
-            new PasswordResetMailer(sender, "https://app.autofolio.com/", "noreply@autofolio.com");
+            new PasswordResetMailer(sender, new FrontendProperties("https://app.autofolio.com/"), "noreply@autofolio.com");
 
     @Test
     @DisplayName("Deve renderizar nome, prazo e link visível no HTML")
@@ -70,7 +71,7 @@ class PasswordResetMailerTest {
     @Test
     @DisplayName("Deve usar remetente padrão quando o configurado está em branco")
     void shouldFallbackFrom() throws Exception {
-        var blank = new PasswordResetMailer(sender, "http://x", " ");
+        var blank = new PasswordResetMailer(sender, new FrontendProperties("http://x"), " ");
         when(sender.createMimeMessage()).thenReturn(new JavaMailSenderImpl().createMimeMessage());
 
         blank.send("d@t.com", "L", "t", Duration.ofHours(1));

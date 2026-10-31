@@ -1,5 +1,6 @@
 package com.autofolio.auth;
 
+import com.autofolio.config.FrontendProperties;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +24,7 @@ import java.time.Duration;
 @Component
 public class PasswordResetMailer {
 
+    // Só fallback para MAIL_FROM em branco (o default de propriedade ausente é o do application.yml)
     static final String DEFAULT_FROM = "noreply@autofolio.com";
     static final String SUBJECT = "AutoFolio - Redefinição de senha";
     private static final String TEMPLATE = "templates/email/password-reset.html";
@@ -33,10 +35,10 @@ public class PasswordResetMailer {
     private final String template;
 
     public PasswordResetMailer(JavaMailSender mailSender,
-                               @Value("${frontend.url:http://localhost:5173}") String frontendUrl,
-                               @Value("${app.mail.from:" + DEFAULT_FROM + "}") String from) {
+                               FrontendProperties frontend,
+                               @Value("${app.mail.from}") String from) {
         this.mailSender = mailSender;
-        this.frontendUrl = frontendUrl.replaceAll("/+$", "");
+        this.frontendUrl = frontend.url();
         this.from = from.isBlank() ? DEFAULT_FROM : from;
         try (var in = new ClassPathResource(TEMPLATE).getInputStream()) {
             this.template = new String(in.readAllBytes(), StandardCharsets.UTF_8);

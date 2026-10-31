@@ -1,9 +1,11 @@
 package com.autofolio.config;
 
+import com.autofolio.shared.web.RequestIdFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -26,10 +28,11 @@ import java.util.List;
  */
 @Configuration
 @EnableWebSecurity
+@Import(FrontendConfig.class)
+@RequiredArgsConstructor
 public class SecurityConfig {
 
-    @Value("${frontend.url:http://localhost:5173}")
-    private String frontendUrl;
+    private final FrontendProperties frontend;
 
     /**
      * Define a corrente de filtros de segurança (Security Filter Chain).
@@ -76,13 +79,17 @@ public class SecurityConfig {
         var configuration = new CorsConfiguration();
         
         // Define origens permitidas baseadas na variável de ambiente
-        configuration.setAllowedOrigins(List.of(frontendUrl));
+        configuration.setAllowedOrigins(List.of(frontend.url()));
         
         // Métodos HTTP permitidos
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         
         // Headers permitidos
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
+        configuration.setAllowedHeaders(List.of(
+                "Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin", RequestIdFilter.HEADER));
+
+        // Permite ao frontend ler o id de rastreio devolvido pela API
+        configuration.setExposedHeaders(List.of(RequestIdFilter.HEADER));
         
         // Permite o envio de cookies/credentials se necessário (útil para alguns fluxos JWT)
         configuration.setAllowCredentials(true);

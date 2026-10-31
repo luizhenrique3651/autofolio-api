@@ -1,5 +1,7 @@
 package com.autofolio.auth;
 
+import com.autofolio.shared.security.TokenHasher;
+import java.util.regex.Pattern;
 import com.autofolio.AbstractPostgresIT;
 import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
@@ -81,6 +83,10 @@ class ForgotPasswordQaIT extends AbstractPostgresIT {
             assertThat(body(r)).isEqualTo(body(a));
             assertThat(r.getResponse().getHeaderNames()).isEqualTo(a.getResponse().getHeaderNames());
             for (var h : a.getResponse().getHeaderNames()) {
+                // X-Request-Id é único por requisição, de propósito
+                if (h.equals("X-Request-Id")) {
+                    continue;
+                }
                 assertThat(r.getResponse().getHeaders(h)).as(h).isEqualTo(a.getResponse().getHeaders(h));
             }
         }
@@ -110,10 +116,15 @@ class ForgotPasswordQaIT extends AbstractPostgresIT {
         doAnswer(i -> { sent.set(i.getArgument(0)); return null; }).when(sender).send(any(MimeMessage.class));
         call("{\"email\":\"a@t.com\"}");
         await().untilAsserted(() -> assertThat(sent.get()).isNotNull());
-        String token = jdbc.queryForObject("SELECT token FROM password_reset_tokens", String.class);
+        String tokenHash = jdbc.queryForObject("SELECT token_hash FROM password_reset_tokens", String.class);
         var m = sent.get();
         String html = (String) m.getContent();
-        String frontend = env.getProperty("frontend.url", "http://localhost:5173");
+        String frontend = env.getRequiredProperty("frontend.url");
+        var linkMatcher = Pattern.compile(Pattern.quote(frontend + "/reset-password?token=") + "([0-9a-f-]{36})").matcher(html);
+        assertThat(linkMatcher.find()).isTrue();
+        // O e-mail leva o token cru; o banco guarda só o hash dele
+        String token = linkMatcher.group(1);
+        assertThat(tokenHash).isEqualTo(TokenHasher.sha256Hex(token)).isNotEqualTo(token);
         assertThat(html).contains(frontend + "/reset-password?token=" + token);
         assertThat(html).contains("&lt;script&gt;").doesNotContain("<script>");
         assertThat(html).contains("AutoFolio").contains("1 hora");

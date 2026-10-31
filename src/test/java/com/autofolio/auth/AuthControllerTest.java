@@ -5,14 +5,17 @@ import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.LoginResponse;
 import com.autofolio.auth.dto.RefreshRequest;
 import com.autofolio.auth.dto.RefreshResponse;
+import com.autofolio.auth.dto.ResetPasswordRequest;
 import com.autofolio.config.SecurityConfig;
 import com.autofolio.shared.exception.GlobalExceptionHandler;
 import com.autofolio.shared.exception.InvalidCredentialsException;
 import com.autofolio.shared.exception.InvalidRefreshTokenException;
+import com.autofolio.shared.exception.InvalidResetTokenException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -23,8 +26,13 @@ import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.stream.Stream;
+
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -180,5 +188,61 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new ForgotPasswordRequest(email))))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Reset: deve retornar 200 sem corpo quando o service aceita")
+    void shouldResetPassword() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest("tok", "Senha1234"))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(""));
+
+        verify(authService).resetPassword(new ResetPasswordRequest("tok", "Senha1234"));
+    }
+
+    @Test
+    @DisplayName("Reset: token inválido, expirado ou usado retorna 400 ProblemDetail")
+    void shouldReturn400WhenTokenInvalid() throws Exception {
+        doThrow(new InvalidResetTokenException()).when(authService).resetPassword(any());
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest("tok", "Senha1234"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.title").value("Requisição Inválida"))
+                .andExpect(jsonPath("$.detail").value("Token de redefinição inválido, expirado ou já utilizado."));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Curta1A", "semmaiuscula1", "SemNumeroAqui", "", "   "})
+    @DisplayName("Reset: senha fora da política ou vazia retorna 400 sem chamar o service")
+    void shouldReturn400WhenPasswordViolatesPolicy(String password) throws Exception {
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest("tok", password))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors").value(containsString("newPassword")));
+
+        verifyNoInteractions(authService);
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidResetTokens")
+    @DisplayName("Reset: token em branco ou maior que 255 retorna 400")
+    void shouldReturn400WhenTokenBlankOrTooLong(String token) throws Exception {
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest(token, "Senha1234"))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors").value(containsString("token")));
+
+        verifyNoInteractions(authService);
+    }
+
+    static Stream<String> invalidResetTokens() {
+        return Stream.of("", "a".repeat(256));
     }
 }
