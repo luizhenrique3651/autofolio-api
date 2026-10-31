@@ -1,13 +1,18 @@
 package com.autofolio.auth;
 
 import com.autofolio.auth.dto.LoginRequest;
+import com.autofolio.auth.dto.RefreshRequest;
 import com.autofolio.auth.dto.RegisterRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,10 +29,21 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.sql.Timestamp;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -56,6 +72,11 @@ class AuthControllerIT {
     private static final String EMAIL = "vendedor@teste.com";
     private static final String PASSWORD = "password123";
     private static final String SLUG = "vendedor-teste";
+
+    // language=TEXT
+    private static final String MALFORMED_JSON = "{malformado";
+    // language=TEXT
+    private static final String NOT_JSON = "not json";
 
     @Autowired
     private MockMvc mockMvc;
@@ -92,7 +113,7 @@ class AuthControllerIT {
     }
 
     private JsonNode body(MvcResult result) throws Exception {
-        return objectMapper.readTree(result.getResponse().getContentAsString());
+        return objectMapper.readTree(result.getResponse().getContentAsString(StandardCharsets.UTF_8));
     }
 
     @Test
@@ -115,6 +136,9 @@ class AuthControllerIT {
         register();
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new RegisterRequest("Outro", EMAIL, "outro", PASSWORD))))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RegisterRequest("Outro", "outro@teste.com", SLUG, PASSWORD))))
                 .andExpect(status().isConflict());
     }
 
@@ -147,7 +171,7 @@ class AuthControllerIT {
                 "SELECT user_id::text AS user_id, expires_at, revoked FROM refresh_tokens WHERE token = ?", refresh);
         assertThat(row.get("user_id")).isEqualTo(userId);
         assertThat((Boolean) row.get("revoked")).isFalse();
-        var expiresAt = ((java.sql.Timestamp) row.get("expires_at")).toInstant().atOffset(java.time.ZoneOffset.UTC);
+        var expiresAt = ((Timestamp) row.get("expires_at")).toInstant().atOffset(ZoneOffset.UTC);
         assertThat(Duration.between(OffsetDateTime.now(), expiresAt).toDays()).isBetween(29L, 30L);
     }
 
@@ -176,7 +200,7 @@ class AuthControllerIT {
         assertThat(a.get("detail")).isEqualTo(b.get("detail"));
         assertThat(a.get("title")).isEqualTo(b.get("title"));
         assertThat(a.get("detail").asText()).doesNotContain(EMAIL).doesNotContainIgnoringCase("senha");
-        assertThat(wrongPassword.getResponse().getContentAsString()).doesNotContain("$2");
+        assertThat(wrongPassword.getResponse().getContentAsString(StandardCharsets.UTF_8)).doesNotContain("$2");
         // falha de login não cria refresh token (só o do registro)
         assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class)).isEqualTo(1);
     }
@@ -194,8 +218,12 @@ class AuthControllerIT {
     @Test
     @DisplayName("Login: 400 com JSON malformado")
     void loginMalformedJson() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("{malformado"))
-                .andExpect(status().isBadRequest());
+        var result = mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(MALFORMED_JSON))
+                .andReturn();
+
+        assertProblem(result, 400, "Requisição Inválida", "bad-request");
+        assertThat(body(result).get("detail").asText()).isEqualTo("Corpo da requisição ausente ou malformado.");
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8)).doesNotContain("Jackson", "Unexpected", "line:");
     }
 
     @Test
@@ -221,5 +249,259 @@ class AuthControllerIT {
         var status = mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer " + token))
                 .andReturn().getResponse().getStatus();
         assertThat(status).isNotEqualTo(401).isNotEqualTo(403);
+    }
+
+    private MvcResult refresh(String token) throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RefreshRequest(token))))
+                .andReturn();
+    }
+
+    @Test
+    @DisplayName("Refresh: 200 com novo access token válido; refresh token reutilizável e inalterado")
+    void refreshSuccessAndReusable() throws Exception {
+        var userId = body(register()).get("user").get("id").asText();
+        var rt = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        var before = jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class);
+
+        for (int i = 0; i < 2; i++) {
+            var result = refresh(rt);
+            assertThat(result.getResponse().getStatus()).isEqualTo(200);
+            var json = body(result);
+            assertThat(json.get("expiresIn").asInt()).isEqualTo(3600);
+            assertThat(jwtDecoder.decode(json.get("accessToken").asText()).getSubject()).isEqualTo(userId);
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, rt)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Refresh: 401 para token inexistente")
+    void refreshUnknownToken() throws Exception {
+        register();
+        assertThat(refresh("nao-existe").getResponse().getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    @DisplayName("Refresh: 401 para token revogado, que permanece na tabela")
+    void refreshRevokedToken() throws Exception {
+        register();
+        var revoked = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        jdbc.update("UPDATE refresh_tokens SET revoked = true WHERE token = ?", revoked);
+
+        assertThat(refresh(revoked).getResponse().getStatus()).isEqualTo(401);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, revoked)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Refresh: 401 para token expirado, que é removido da tabela")
+    void refreshExpiredToken() throws Exception {
+        register();
+        var expired = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        jdbc.update("UPDATE refresh_tokens SET expires_at = now() - interval '1 minute' WHERE token = ?", expired);
+
+        var result = refresh(expired);
+        assertThat(result.getResponse().getStatus()).isEqualTo(401);
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8)).contains("Refresh token inválido ou expirado.");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, expired)).isZero();
+    }
+
+    @Test
+    @DisplayName("Refresh: access token novo tem claims corretas e funciona em rota protegida")
+    void refreshTokenClaimsAndProtectedRoute() throws Exception {
+        var userId = body(register()).get("user").get("id").asText();
+        var rt = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        var at = body(refresh(rt)).get("accessToken").asText();
+        Jwt jwt = jwtDecoder.decode(at);
+        assertThat(jwt.getSubject()).isEqualTo(userId);
+        assertThat(jwt.<String>getClaim("slug")).isEqualTo(SLUG);
+        assertThat(jwt.getIssuedAt()).isNotNull();
+        assertThat(Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt())).isEqualTo(Duration.ofHours(1));
+        var st = mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer " + at))
+                .andReturn().getResponse().getStatus();
+        assertThat(st).isNotEqualTo(401).isNotEqualTo(403);
+    }
+
+    @Test
+    @DisplayName("Refresh: 401 idêntico (corpo, content-type) para inexistente, revogado e expirado")
+    void refreshInvalidTokensHaveSameResponse() throws Exception {
+        register();
+        var revoked = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        var expired = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        jdbc.update("UPDATE refresh_tokens SET revoked = true WHERE token = ?", revoked);
+        jdbc.update("UPDATE refresh_tokens SET expires_at = now() - interval '1 second' WHERE token = ?", expired);
+        var normalized = new HashSet<String>();
+        for (var t : List.of("nao-existe", revoked, expired)) {
+            var r = refresh(t);
+            assertThat(r.getResponse().getStatus()).isEqualTo(401);
+            assertThat(r.getResponse().getContentType()).contains("application/problem+json");
+            var j = (ObjectNode) body(r);
+            j.remove("timestamp");
+            normalized.add(j.toString());
+        }
+        assertThat(normalized).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Refresh: expirado e revogado também é removido; não afeta outros tokens")
+    void refreshExpiredOnlyDeletesItself() throws Exception {
+        register();
+        var a = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        var b = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        jdbc.update("UPDATE refresh_tokens SET expires_at = now() - interval '1 minute', revoked = true WHERE token = ?", a);
+        assertThat(refresh(a).getResponse().getStatus()).isEqualTo(401);
+        assertThat(refresh(a).getResponse().getStatus()).isEqualTo(401);
+        assertThat(refresh(b).getResponse().getStatus()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, a)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, b)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Refresh: requisições concorrentes no mesmo token expirado → todas 401, nenhuma 500")
+    void refreshConcurrentExpiredNever500() throws Exception {
+        var userId = UUID.fromString(body(register()).get("user").get("id").asText());
+        for (int round = 0; round < 15; round++) {
+            // Insere direto no banco: evita o custo de BCrypt de um login por rodada
+            var rt = UUID.randomUUID().toString();
+            jdbc.update("INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, now() - interval '1 minute')", userId, rt);
+            var go = new CountDownLatch(1);
+            ExecutorService pool = Executors.newFixedThreadPool(4);
+            try {
+                List<Future<Integer>> futures = new ArrayList<>();
+                for (int i = 0; i < 4; i++) {
+                    futures.add(pool.submit(() -> {
+                        go.await();
+                        return refresh(rt).getResponse().getStatus();
+                    }));
+                }
+                go.countDown();
+                for (var future : futures) {
+                    assertThat(future.get(10, TimeUnit.SECONDS)).isEqualTo(401);
+                }
+            } finally {
+                pool.shutdownNow();
+            }
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, rt)).isZero();
+        }
+    }
+
+    @Test
+    @DisplayName("Refresh: 400 para campo ausente/null/branco/longo demais, JSON malformado e sem body")
+    void refreshBadRequests() throws Exception {
+        for (var json : List.of("{}", "{\"refreshToken\":null}", "{\"refreshToken\":\"\"}", "{\"refreshToken\":\"   \"}")) {
+            var r = mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(json)).andReturn();
+            assertThat(r.getResponse().getStatus()).as(json).isEqualTo(400);
+            assertThat(r.getResponse().getContentType()).contains("application/problem+json");
+        }
+        for (var json : List.of(MALFORMED_JSON, NOT_JSON, "[]", "{\"refreshToken\":{\"a\":1}}")) {
+            assertThat(mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(json))
+                    .andReturn().getResponse().getStatus()).as(json).isEqualTo(400);
+        }
+        assertThat(refresh("x".repeat(256)).getResponse().getStatus()).as("maior que a coluna").isEqualTo(400);
+        assertThat(mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON))
+                .andReturn().getResponse().getStatus()).as("sem body").isEqualTo(400);
+    }
+
+    @Test
+    @DisplayName("Refresh: limite de 255 chars -> 401 (aceito, inexistente); 256 -> 400 com errors referenciando refreshToken")
+    void refreshTokenLengthBoundary() throws Exception {
+        assertProblem(refresh("x".repeat(255)), 401, "Não Autorizado", "unauthorized");
+        var r = refresh("x".repeat(256));
+        assertProblem(r, 400, "Requisição Inválida", "bad-request");
+        assertThat(objectMapper.readTree(r.getResponse().getContentAsString(StandardCharsets.UTF_8)).get("errors").asText())
+                .startsWith("refreshToken:");
+    }
+
+    private void assertProblem(MvcResult r, int status, String title, String typeSlug) throws Exception {
+        var raw = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(r.getResponse().getStatus()).as(raw).isEqualTo(status);
+        assertThat(r.getResponse().getContentType()).contains("application/problem+json");
+        var j = objectMapper.readTree(raw);
+        assertThat(j.get("status").asInt()).isEqualTo(status);
+        assertThat(j.get("title").asText()).isEqualTo(title);
+        assertThat(j.get("type").asText()).isEqualTo("https://autofolio.com/errors/" + typeSlug);
+        assertThat(j.get("timestamp").asText()).isNotBlank();
+        assertThat(raw.split("\"timestamp\"", -1).length - 1).as("timestamp duplicado: " + raw).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Handler: 415, 405, 404 e 406 em problem+json padronizado")
+    void springMvcErrorsArePadronized() throws Exception {
+        assertProblem(mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.TEXT_PLAIN).content("x")).andReturn(),
+                415, "Tipo de Mídia Não Suportado", "unsupported-media-type");
+        assertProblem(mockMvc.perform(get("/api/v1/auth/refresh")).andReturn(),
+                405, "Método Não Permitido", "method-not-allowed");
+        assertProblem(mockMvc.perform(get("/api/v1/auth/nao-existe")).andReturn(),
+                404, "Recurso Não Encontrado", "not-found");
+        register();
+        var rt = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        assertProblem(mockMvc.perform(post("/api/v1/auth/refresh").accept(MediaType.APPLICATION_XML)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"refreshToken\":\"" + rt + "\"}")).andReturn(),
+                406, "Formato Não Aceito", "not-acceptable");
+        var at = body(login(EMAIL, PASSWORD)).get("accessToken").asText();
+        assertProblem(mockMvc.perform(get("/api/v1/rota-inexistente").header("Authorization", "Bearer " + at)).andReturn(),
+                404, "Recurso Não Encontrado", "not-found");
+    }
+
+    @Test
+    @DisplayName("Handler: formato dos 400, 409, 401s e Bearer malformado")
+    void errorShapesArePadronized() throws Exception {
+        var v = mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("{}")).andReturn();
+        assertProblem(v, 400, "Requisição Inválida", "bad-request");
+        assertThat(body(v).get("detail").asText()).isEqualTo("Falha na validação dos campos.");
+        assertThat(body(v).get("errors").asText()).contains("email:");
+        register();
+        var c = mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RegisterRequest("Xxxx", EMAIL, "outro-slug", PASSWORD)))).andReturn();
+        assertProblem(c, 409, "Conflito de Dados", "conflict");
+        assertProblem(login(EMAIL, "errada123"), 401, "Não Autorizado", "unauthorized");
+        assertProblem(refresh("nao-existe"), 401, "Não Autorizado", "unauthorized");
+        var rs = mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer lixo")).andReturn();
+        assertProblem(rs, 401, "Não Autorizado", "unauthorized");
+        assertThat(rs.getResponse().getHeader("WWW-Authenticate")).startsWith("Bearer");
+        var bad = mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer a b c")).andReturn();
+        // O resolver padrão trata header malformado como invalid_token (401); invalid_request (400) não é alcançável aqui
+        assertProblem(bad, 401, "Não Autorizado", "unauthorized");
+        assertThat(bad.getResponse().getHeader("WWW-Authenticate")).contains("invalid_token");
+    }
+
+    @Test
+    @DisplayName("Refresh: Bearer inválido na rota é ignorado; token com espaços ou case alterado não existe")
+    void refreshIgnoresBearerAndMatchesExactly() throws Exception {
+        register();
+        var rt = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        var r = mockMvc.perform(post("/api/v1/auth/refresh").header("Authorization", "Bearer lixo")
+                .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(new RefreshRequest(rt)))).andReturn();
+        assertThat(r.getResponse().getStatus()).isEqualTo(200);
+        assertThat(refresh(rt.toUpperCase()).getResponse().getStatus()).isEqualTo(401);
+        assertThat(refresh(" " + rt).getResponse().getStatus()).isEqualTo(401);
+        assertThat(refresh("x".repeat(255)).getResponse().getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    @DisplayName("Refresh: 200 só com accessToken/expiresIn; 401 sem stack nem SQL")
+    void refreshDoesNotLeak() throws Exception {
+        register();
+        var rt = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        var ok = body(refresh(rt));
+        assertThat(ok.fieldNames()).toIterable().containsExactlyInAnyOrder("accessToken", "expiresIn");
+        var err = refresh("nao-existe").getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(err).doesNotContain("Exception", "SQL", "com.autofolio", "nao-existe");
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"Bearer lixo", "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.assinaturaerrada"})
+    @DisplayName("Resource server: 401 com WWW-Authenticate e ProblemDetail (sem token, inválido, assinatura errada)")
+    void resourceServer401(String authorization) throws Exception {
+        var request = get("/api/v1/vehicles");
+        if (authorization != null) {
+            request = request.header("Authorization", authorization);
+        }
+        var result = mockMvc.perform(request).andReturn();
+
+        assertProblem(result, 401, "Não Autorizado", "unauthorized");
+        assertThat(result.getResponse().getHeader("WWW-Authenticate")).startsWith("Bearer");
     }
 }

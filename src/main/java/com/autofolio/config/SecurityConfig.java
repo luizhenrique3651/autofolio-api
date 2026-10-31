@@ -1,5 +1,6 @@
 package com.autofolio.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -34,7 +35,7 @@ public class SecurityConfig {
      * Define a corrente de filtros de segurança (Security Filter Chain).
      */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable) // Desabilita CSRF para APIs stateless
                 .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Configura CORS
@@ -47,6 +48,7 @@ public class SecurityConfig {
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .bearerTokenResolver(publicRoutesAwareBearerTokenResolver())
+                        .authenticationEntryPoint(new ProblemDetailAuthenticationEntryPoint(objectMapper))
                         .jwt(Customizer.withDefaults())) // Valida Bearer JWT (JwtDecoder HS256)
                 .formLogin(AbstractHttpConfigurer::disable) // Remove formulário padrão
                 .httpBasic(AbstractHttpConfigurer::disable) // Remove autenticação básica

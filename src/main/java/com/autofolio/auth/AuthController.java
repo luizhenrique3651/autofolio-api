@@ -3,6 +3,8 @@ package com.autofolio.auth;
 import com.autofolio.auth.dto.AuthResponse;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.LoginResponse;
+import com.autofolio.auth.dto.RefreshRequest;
+import com.autofolio.auth.dto.RefreshResponse;
 import com.autofolio.auth.dto.RegisterRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -47,5 +49,17 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    /**
+     * Renova o access token sem rotacionar o refresh token.
+     */
+    @Operation(summary = "Renovação do access token", description = "Recebe um refresh token válido e retorna novo JWT de acesso (1h). O refresh token não é rotacionado.")
+    @ApiResponse(responseCode = "200", description = "Access token renovado")
+    @ApiResponse(responseCode = "400", description = "Corpo inválido")
+    @ApiResponse(responseCode = "401", description = "Refresh token inexistente, revogado ou expirado")
+    @PostMapping("/refresh")
+    public ResponseEntity<RefreshResponse> refresh(@Valid @RequestBody RefreshRequest request) {
+        return ResponseEntity.ok(authService.refresh(request));
     }
 }
