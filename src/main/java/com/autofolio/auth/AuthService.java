@@ -5,6 +5,8 @@ import com.autofolio.auth.domain.UserProfile;
 import com.autofolio.auth.dto.AuthResponse;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.LoginResponse;
+import com.autofolio.auth.dto.RefreshRequest;
+import com.autofolio.auth.dto.RefreshResponse;
 import com.autofolio.auth.dto.RegisterRequest;
 import com.autofolio.auth.repository.UserProfileRepository;
 import com.autofolio.auth.repository.UserRepository;
@@ -89,5 +91,13 @@ public class AuthService {
 
         var tokens = tokenService.issueTokens(user);
         return new LoginResponse(tokens.accessToken(), tokens.refreshToken(), tokens.expiresIn());
+    }
+
+    /**
+     * Renova o access token a partir de um refresh token válido.
+     */
+    public RefreshResponse refresh(RefreshRequest request) {
+        var grant = tokenService.refresh(request.refreshToken());
+        return new RefreshResponse(grant.accessToken(), grant.expiresIn());
     }
 }

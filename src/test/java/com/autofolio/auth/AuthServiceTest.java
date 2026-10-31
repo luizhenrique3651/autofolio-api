@@ -3,6 +3,8 @@ package com.autofolio.auth;
 import com.autofolio.auth.domain.User;
 import com.autofolio.auth.domain.UserProfile;
 import com.autofolio.auth.dto.LoginRequest;
+import com.autofolio.auth.dto.RefreshRequest;
+import com.autofolio.auth.dto.AccessTokenGrant;
 import com.autofolio.auth.dto.RegisterRequest;
 import com.autofolio.auth.dto.TokenPair;
 import com.autofolio.shared.exception.InvalidCredentialsException;
@@ -143,5 +145,16 @@ class AuthServiceTest {
                 .hasMessage("Credenciais inválidas.");
 
         verify(tokenService, never()).issueTokens(any());
+    }
+
+    @Test
+    @DisplayName("Deve delegar a renovação ao TokenService")
+    void shouldRefresh() {
+        when(tokenService.refresh("rt")).thenReturn(new AccessTokenGrant("novo", 3600));
+
+        var response = authService.refresh(new RefreshRequest("rt"));
+
+        assertThat(response.accessToken()).isEqualTo("novo");
+        assertThat(response.expiresIn()).isEqualTo(3600);
     }
 }

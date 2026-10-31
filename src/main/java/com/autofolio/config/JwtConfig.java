@@ -27,7 +27,7 @@ public class JwtConfig {
     public JwtConfig(@Value("${jwt.secret}") String secret) {
         byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
         if (bytes.length < MIN_SECRET_BYTES) {
-            throw new IllegalStateException("JWT_SECRET deve ter no mínimo " + MIN_SECRET_BYTES + " caracteres.");
+            throw new IllegalStateException("JWT_SECRET deve ter no mínimo " + MIN_SECRET_BYTES + " bytes.");
         }
         this.secretKey = new SecretKeySpec(bytes, "HmacSHA256");
     }

@@ -2,9 +2,12 @@ package com.autofolio.auth;
 
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.LoginResponse;
+import com.autofolio.auth.dto.RefreshRequest;
+import com.autofolio.auth.dto.RefreshResponse;
 import com.autofolio.config.SecurityConfig;
 import com.autofolio.shared.exception.GlobalExceptionHandler;
 import com.autofolio.shared.exception.InvalidCredentialsException;
+import com.autofolio.shared.exception.InvalidRefreshTokenException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,12 +24,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(AuthController.class)
 @Import({SecurityConfig.class, GlobalExceptionHandler.class})
-@DisplayName("Testes de Controller - POST /api/v1/auth/login")
+@DisplayName("Testes de Controller - /api/v1/auth")
 class AuthControllerTest {
 
     @Autowired
@@ -103,5 +108,51 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new LoginRequest("a@b.com", "password123"))))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Refresh: 200 com accessToken e expiresIn")
+    void shouldRefresh() throws Exception {
+        when(authService.refresh(any())).thenReturn(new RefreshResponse("novo", 3600));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RefreshRequest("rt"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("novo"))
+                .andExpect(jsonPath("$.expiresIn").value(3600));
+    }
+
+    @Test
+    @DisplayName("Refresh: 401 ProblemDetail para refresh token inválido")
+    void shouldRefreshReturn401() throws Exception {
+        when(authService.refresh(any())).thenThrow(new InvalidRefreshTokenException());
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RefreshRequest("rt"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("Refresh token inválido ou expirado."));
+    }
+
+    @Test
+    @DisplayName("Refresh: 400 quando o refresh token está em branco")
+    void shouldRefreshReturn400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new RefreshRequest(""))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("401 do resource server vem como ProblemDetail com WWW-Authenticate")
+    void resourceServer401IsProblemDetail() throws Exception {
+        mockMvc.perform(get("/api/v1/vehicles"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().exists("WWW-Authenticate"))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.title").value("Não Autorizado"))
+                .andExpect(jsonPath("$.timestamp").exists());
     }
 }
