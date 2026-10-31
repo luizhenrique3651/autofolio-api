@@ -10,14 +10,11 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
 
-  # Production Mail Configuration
+  # Production Mail: exige as variáveis (sem defaults de dev); timeouts vêm do application.yml
   mail:
     host: ${MAIL_HOST}
-    port: 587
+    port: ${MAIL_PORT:587}
     username: ${MAIL_USER}
     password: ${MAIL_PASS}
     properties:

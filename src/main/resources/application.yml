@@ -10,6 +10,19 @@ spring:
   jpa:
     open-in-view: false
 
+  # SMTP: defaults de dev (SMTP local); o profile prod exige as variáveis MAIL_*
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USER:}
+    password: ${MAIL_PASS:}
+    properties:
+      mail:
+        smtp:
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
   # Common JSON Formatting
   jackson:
     date-format: yyyy-MM-dd'T'HH:mm:ss.SSSZ
@@ -25,6 +38,10 @@ management:
   endpoint:
     health:
       show-details: when_authorized
+  health:
+    mail:
+      # O probe do /actuator/health não deve conectar no SMTP (recurso não crítico): SMTP fora derrubaria o health
+      enabled: false
 
 # API Documentation Base
 springdoc:
@@ -36,3 +53,8 @@ springdoc:
 # Security (JWT) - chave HS256 (mínimo 32 caracteres) vinda do ambiente
 jwt:
   secret: ${JWT_SECRET}
+
+# Remetente dos e-mails transacionais (alguns provedores usam usuário fixo, ex.: "apikey", então não derivar de MAIL_USER)
+app:
+  mail:
+    from: ${MAIL_FROM:noreply@autofolio.com}
