@@ -53,7 +53,7 @@ public final class ProblemDetails {
      * Padroniza ProblemDetail gerados pelo Spring MVC (404, 405, 415...): título em PT-BR,
      * type autofolio quando for about:blank e timestamp quando ausente.
      */
-    public static ProblemDetail normalize(ProblemDetail problemDetail) {
+    public static void normalize(ProblemDetail problemDetail) {
         if (ProblemDetail.forStatus(problemDetail.getStatus()).getType().equals(problemDetail.getType())) {
             var label = labelFor(HttpStatusCode.valueOf(problemDetail.getStatus()));
             problemDetail.setTitle(label.title());
@@ -62,7 +62,6 @@ public final class ProblemDetails {
         if (problemDetail.getProperties() == null || !problemDetail.getProperties().containsKey("timestamp")) {
             problemDetail.setProperty("timestamp", Instant.now());
         }
-        return problemDetail;
     }
 
     private static Label labelFor(HttpStatusCode code) {
