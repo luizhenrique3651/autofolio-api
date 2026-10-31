@@ -33,11 +33,6 @@ cloudinary:
   api-key: ${CLOUDINARY_API_KEY}
   api-secret: ${CLOUDINARY_API_SECRET}
 
-# Security (JWT)
-jwt:
-  secret: ${JWT_SECRET}
-  expiration: 86400000 # 24h
-
 # Logging Strategy for Production
 logging:
   level:

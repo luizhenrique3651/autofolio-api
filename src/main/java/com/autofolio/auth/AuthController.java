@@ -1,7 +1,11 @@
 package com.autofolio.auth;
 
 import com.autofolio.auth.dto.AuthResponse;
+import com.autofolio.auth.dto.LoginRequest;
+import com.autofolio.auth.dto.LoginResponse;
 import com.autofolio.auth.dto.RegisterRequest;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,9 +28,24 @@ public class AuthController {
     /**
      * Endpoint para cadastro de um novo vendedor.
      */
+    @Operation(summary = "Cadastro de novo vendedor", description = "Cria usuário e perfil e retorna os tokens de acesso.")
+    @ApiResponse(responseCode = "201", description = "Vendedor cadastrado com sucesso")
+    @ApiResponse(responseCode = "400", description = "Dados inválidos")
+    @ApiResponse(responseCode = "409", description = "E-mail ou slug já em uso")
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
         var response = authService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * Endpoint de login por e-mail e senha.
+     */
+    @Operation(summary = "Login por e-mail e senha", description = "Retorna JWT de acesso (1h) e refresh token opaco (30 dias).")
+    @ApiResponse(responseCode = "200", description = "Login realizado com sucesso")
+    @ApiResponse(responseCode = "401", description = "Credenciais inválidas")
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+        return ResponseEntity.ok(authService.login(request));
     }
 }

@@ -1,5 +1,6 @@
 package com.autofolio.config;
 
+import com.autofolio.auth.repository.RefreshTokenRepository;
 import com.autofolio.auth.repository.UserProfileRepository;
 import com.autofolio.auth.repository.UserRepository;
 import com.cloudinary.Cloudinary;
@@ -34,6 +35,9 @@ public class CloudinaryIntegrationTest {
 
     @MockBean
     private UserProfileRepository userProfileRepository;
+
+    @MockBean
+    private RefreshTokenRepository refreshTokenRepository;
 
     @Test
     @DisplayName("Deve realizar upload de uma imagem real para validar a integração com Cloudinary")

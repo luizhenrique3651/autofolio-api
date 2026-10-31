@@ -3,11 +3,16 @@ package com.autofolio.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -40,9 +45,24 @@ public class SecurityConfig {
                         .requestMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll() // Documentação Swagger
                         .anyRequest().authenticated() // Qualquer outra rota exige autenticação
                 )
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .bearerTokenResolver(publicRoutesAwareBearerTokenResolver())
+                        .jwt(Customizer.withDefaults())) // Valida Bearer JWT (JwtDecoder HS256)
                 .formLogin(AbstractHttpConfigurer::disable) // Remove formulário padrão
                 .httpBasic(AbstractHttpConfigurer::disable) // Remove autenticação básica
                 .build();
+    }
+
+    /**
+     * Ignora o header Authorization nas rotas públicas, para que um token expirado/inválido
+     * não gere 401 em rotas permitAll.
+     */
+    private BearerTokenResolver publicRoutesAwareBearerTokenResolver() {
+        var delegate = new DefaultBearerTokenResolver();
+        var publicRoutes = new OrRequestMatcher(
+                new AntPathRequestMatcher("/api/v1/auth/**"),
+                new AntPathRequestMatcher("/api/v1/portfolio/**"));
+        return request -> publicRoutes.matches(request) ? null : delegate.resolve(request);
     }
 
     /**

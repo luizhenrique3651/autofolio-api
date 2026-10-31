@@ -7,6 +7,9 @@ spring:
     virtual:
       enabled: true
 
+  jpa:
+    open-in-view: false
+
   # Common JSON Formatting
   jackson:
     date-format: yyyy-MM-dd'T'HH:mm:ss.SSSZ
@@ -29,3 +32,7 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+# Security (JWT) - chave HS256 (mínimo 32 caracteres) vinda do ambiente
+jwt:
+  secret: ${JWT_SECRET}
