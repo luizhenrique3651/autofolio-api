@@ -1,12 +1,11 @@
 package com.autofolio.config;
 
+import java.util.Map;
 import org.slf4j.MDC;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.annotation.EnableAsync;
-
-import java.util.Map;
 
 /**
  * Habilita @Async. O executor é o applicationTaskExecutor do Spring Boot, que usa

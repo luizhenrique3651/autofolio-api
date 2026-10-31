@@ -1,5 +1,18 @@
 package com.autofolio.auth;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.autofolio.auth.dto.ForgotPasswordRequest;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.LoginResponse;
@@ -12,6 +25,7 @@ import com.autofolio.shared.exception.InvalidCredentialsException;
 import com.autofolio.shared.exception.InvalidRefreshTokenException;
 import com.autofolio.shared.exception.InvalidResetTokenException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -25,21 +39,6 @@ import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.stream.Stream;
-
-import static org.hamcrest.Matchers.containsString;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(AuthController.class)
 @Import({SecurityConfig.class, GlobalExceptionHandler.class})
@@ -65,7 +64,8 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new LoginRequest("a@b.com", "password123"))))
+                        .content(objectMapper.writeValueAsString(new LoginRequest("a@b.com",
+                        "password123"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").value("jwt"))
                 .andExpect(jsonPath("$.refreshToken").value("refresh"))
@@ -79,7 +79,8 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new LoginRequest("a@b.com", "wrong"))))
+                        .content(objectMapper.writeValueAsString(new LoginRequest("a@b.com",
+                        "wrong"))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.detail").value("Credenciais inválidas."));
     }
@@ -110,7 +111,8 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("Login com Bearer inválido no header não deve retornar 401 (rota pública ignora o token)")
+    @DisplayName("Login com Bearer inválido no header não deve retornar 401 (rota pública ignora "
+            + "o token)")
     void loginWithInvalidBearerIsIgnored() throws Exception {
         when(jwtDecoder.decode(any())).thenThrow(new BadJwtException("invalid"));
         when(authService.login(any())).thenReturn(new LoginResponse("jwt", "refresh", 3600));
@@ -118,7 +120,8 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/v1/auth/login")
                         .header("Authorization", "Bearer expirado")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new LoginRequest("a@b.com", "password123"))))
+                        .content(objectMapper.writeValueAsString(new LoginRequest("a@b.com",
+                        "password123"))))
                 .andExpect(status().isOk());
     }
 
@@ -173,7 +176,8 @@ class AuthControllerTest {
     void shouldAcceptForgotPassword() throws Exception {
         mockMvc.perform(post("/api/v1/auth/forgot-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ForgotPasswordRequest("a@b.com"))))
+                        .content(objectMapper.writeValueAsString(
+                                new ForgotPasswordRequest("a@b.com"))))
                 .andExpect(status().isAccepted())
                 .andExpect(content().string(""));
 
@@ -195,7 +199,8 @@ class AuthControllerTest {
     void shouldResetPassword() throws Exception {
         mockMvc.perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest("tok", "Senha1234"))))
+                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest("tok",
+                        "Senha1234"))))
                 .andExpect(status().isOk())
                 .andExpect(content().string(""));
 
@@ -209,11 +214,13 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest("tok", "Senha1234"))))
+                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest("tok",
+                        "Senha1234"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.title").value("Requisição Inválida"))
-                .andExpect(jsonPath("$.detail").value("Token de redefinição inválido, expirado ou já utilizado."));
+                .andExpect(jsonPath("$.detail")
+                .value("Token de redefinição inválido, expirado ou já utilizado."));
     }
 
     @ParameterizedTest
@@ -222,7 +229,8 @@ class AuthControllerTest {
     void shouldReturn400WhenPasswordViolatesPolicy(String password) throws Exception {
         mockMvc.perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest("tok", password))))
+                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest("tok",
+                        password))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors").value(containsString("newPassword")));
 
@@ -235,7 +243,8 @@ class AuthControllerTest {
     void shouldReturn400WhenTokenBlankOrTooLong(String token) throws Exception {
         mockMvc.perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest(token, "Senha1234"))))
+                        .content(objectMapper.writeValueAsString(new ResetPasswordRequest(token,
+                        "Senha1234"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors").value(containsString("token")));
 

@@ -27,7 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     // Hash BCrypt (força 12) fixo, usado só para equalizar o tempo quando o e-mail não existe
-    private static final String DUMMY_HASH = "$2y$12$5QvHSTxjhCEuWSZ8YX6A5etZA05yBFZSr4xjhsJ6oezMP4mx.Bb/S";
+    private static final String DUMMY_HASH =
+            "$2y$12$5QvHSTxjhCEuWSZ8YX6A5etZA05yBFZSr4xjhsJ6oezMP4mx.Bb/S";
 
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
@@ -84,7 +85,8 @@ public class AuthService {
     public LoginResponse login(LoginRequest request) {
         var user = userRepository.findByEmail(request.email()).orElse(null);
         if (user == null) {
-            // Gasta o mesmo tempo de BCrypt para não revelar a existência da conta pelo tempo de resposta
+            // Gasta o mesmo tempo de BCrypt para não revelar a existência da conta pelo tempo
+            // de resposta
             passwordEncoder.matches(request.password(), DUMMY_HASH);
             throw new InvalidCredentialsException();
         }
@@ -105,7 +107,8 @@ public class AuthService {
     }
 
     /**
-     * Dispara a recuperação de senha em segundo plano; retorna sempre, sem revelar se o e-mail existe.
+     * Dispara a recuperação de senha em segundo plano; retorna sempre, sem revelar se o e-mail
+     * existe.
      */
     public void forgotPassword(ForgotPasswordRequest request) {
         passwordResetService.requestReset(request.email());

@@ -1,5 +1,7 @@
 package com.autofolio.shared.exception;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.autofolio.shared.web.RequestIdFilter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -7,8 +9,6 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("Testes Unitários - ProblemDetails (requestId)")
 class ProblemDetailsTest {

@@ -1,28 +1,28 @@
 package com.autofolio.shared.web;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.autofolio.config.AsyncConfig;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import jakarta.servlet.ServletRequest;
-import jakarta.servlet.ServletResponse;
 import org.slf4j.MDC;
 import org.springframework.lang.NonNull;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
-import java.util.concurrent.atomic.AtomicReference;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 @DisplayName("Testes Unitários - RequestIdFilter e propagação do MDC")
 class RequestIdFilterTest {
 
     private final RequestIdFilter filter = new RequestIdFilter();
 
-    private String run(String header, AtomicReference<String> mdcInside, MockHttpServletResponse response) throws Exception {
+    private String run(String header, AtomicReference<String> mdcInside,
+            MockHttpServletResponse response) throws Exception {
         var request = new MockHttpServletRequest();
         if (header != null) {
             request.addHeader(RequestIdFilter.HEADER, header);

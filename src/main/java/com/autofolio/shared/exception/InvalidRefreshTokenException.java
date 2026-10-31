@@ -5,6 +5,9 @@ package com.autofolio.shared.exception;
  * A mensagem é única de propósito, para não revelar o motivo.
  */
 public class InvalidRefreshTokenException extends RuntimeException {
+    /**
+     * Cria a exceção com mensagem genérica para qualquer refresh token inválido.
+     */
     public InvalidRefreshTokenException() {
         super("Refresh token inválido ou expirado.");
     }

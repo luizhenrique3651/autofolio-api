@@ -1,9 +1,8 @@
 package com.autofolio.config;
 
+import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.time.Clock;
 
 /**
  * Relógio injetável, para que testes de expiração sejam determinísticos.
@@ -11,6 +10,9 @@ import java.time.Clock;
 @Configuration
 public class ClockConfig {
 
+    /**
+     * Relógio em UTC, injetável para permitir testes determinísticos.
+     */
     @Bean
     public Clock clock() {
         return Clock.systemUTC();

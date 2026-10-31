@@ -1,5 +1,16 @@
 package com.autofolio.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+
 import com.autofolio.AbstractPostgresIT;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.RefreshRequest;
@@ -8,6 +19,12 @@ import com.autofolio.auth.dto.ResetPasswordRequest;
 import com.autofolio.shared.security.TokenHasher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -24,24 +41,6 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.verify;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
@@ -52,7 +51,8 @@ class ResetPasswordIT extends AbstractPostgresIT {
     private static final String EMAIL = "vendedor@teste.com";
     private static final String OLD_PASSWORD = "SenhaAntiga1";
     private static final String NEW_PASSWORD = "SenhaNova123";
-    private static final String INVALID_MESSAGE = "Token de redefinição inválido, expirado ou já utilizado.";
+    private static final String INVALID_MESSAGE =
+            "Token de redefinição inválido, expirado ou já utilizado.";
 
     @Autowired
     private MockMvc mockMvc;
@@ -76,18 +76,22 @@ class ResetPasswordIT extends AbstractPostgresIT {
     }
 
     private JsonNode json(MvcResult result) throws Exception {
-        return objectMapper.readTree(result.getResponse().getContentAsString(StandardCharsets.UTF_8));
+        return objectMapper.readTree(result.getResponse()
+                .getContentAsString(StandardCharsets.UTF_8));
     }
 
     private JsonNode register() throws Exception {
-        return json(mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new RegisterRequest("Vendedor Teste", EMAIL, "vendedor-teste", OLD_PASSWORD))))
+        return json(mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RegisterRequest("Vendedor Teste",
+                EMAIL, "vendedor-teste", OLD_PASSWORD))))
                 .andReturn());
     }
 
     private MvcResult login(String password) throws Exception {
         return mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new LoginRequest(EMAIL, password)))).andReturn();
+                .content(objectMapper.writeValueAsString(new LoginRequest(EMAIL, password))))
+                .andReturn();
     }
 
     private MvcResult refresh(String token) throws Exception {
@@ -96,8 +100,10 @@ class ResetPasswordIT extends AbstractPostgresIT {
     }
 
     private MvcResult doReset(String token, String password) throws Exception {
-        return mockMvc.perform(post("/api/v1/auth/reset-password").contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new ResetPasswordRequest(token, password)))).andReturn();
+        return mockMvc.perform(post("/api/v1/auth/reset-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new ResetPasswordRequest(token,
+                password)))).andReturn();
     }
 
     /** Pede o reset e devolve o token cru capturado do e-mail. */
@@ -123,14 +129,19 @@ class ResetPasswordIT extends AbstractPostgresIT {
         assertThat(result.getResponse().getContentAsString()).isEmpty();
         assertThat(login(OLD_PASSWORD).getResponse().getStatus()).isEqualTo(401);
         assertThat(login(NEW_PASSWORD).getResponse().getStatus()).isEqualTo(200);
-        assertThat(jdbc.queryForObject("SELECT used FROM password_reset_tokens WHERE token_hash = ?", Boolean.class,
+        assertThat(jdbc.queryForObject("SELECT used FROM password_reset_tokens "
+                + "WHERE token_hash = ?", Boolean.class,
                 TokenHasher.sha256Hex(token))).isTrue();
-        // Os refresh tokens anteriores (registro e login) foram revogados; o do login novo continua válido
-        assertThat(refresh(registered.get("refreshToken").asText()).getResponse().getStatus()).isEqualTo(401);
+        // Os refresh tokens anteriores (registro e login) foram revogados; o do login novo
+        // continua válido
+        assertThat(refresh(registered.get("refreshToken").asText()).getResponse().getStatus())
+                .isEqualTo(401);
         assertThat(refresh(refreshFromLogin).getResponse().getStatus()).isEqualTo(401);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE revoked = false", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE revoked = false",
+                Integer.class)).isEqualTo(1);
         // BCrypt força 12
-        assertThat(jdbc.queryForObject("SELECT password_hash FROM users", String.class)).startsWith("$2a$12$");
+        assertThat(jdbc.queryForObject("SELECT password_hash FROM users", String.class))
+                .startsWith("$2a$12$");
     }
 
     @Test
@@ -140,7 +151,8 @@ class ResetPasswordIT extends AbstractPostgresIT {
         var used = requestToken();
         assertThat(doReset(used, NEW_PASSWORD).getResponse().getStatus()).isEqualTo(200);
         var expired = requestToken();
-        jdbc.update("UPDATE password_reset_tokens SET expires_at = now() - interval '1 minute' WHERE token_hash = ?",
+        jdbc.update("UPDATE password_reset_tokens SET expires_at = now() - interval '1 minute' "
+                + "WHERE token_hash = ?",
                 TokenHasher.sha256Hex(expired));
 
         var bodies = new ArrayList<JsonNode>();
@@ -156,7 +168,8 @@ class ResetPasswordIT extends AbstractPostgresIT {
             assertThat(body.get("type")).isEqualTo(bodies.getFirst().get("type"));
         }
         // Nenhuma das tentativas alterou a senha
-        assertThat(passwordEncoder.matches(NEW_PASSWORD, jdbc.queryForObject("SELECT password_hash FROM users", String.class))).isTrue();
+        assertThat(passwordEncoder.matches(NEW_PASSWORD,
+        jdbc.queryForObject("SELECT password_hash FROM users", String.class))).isTrue();
     }
 
     @Test
@@ -169,7 +182,8 @@ class ResetPasswordIT extends AbstractPostgresIT {
             assertThat(doReset(token, weak).getResponse().getStatus()).as(weak).isEqualTo(400);
         }
 
-        assertThat(jdbc.queryForObject("SELECT used FROM password_reset_tokens", Boolean.class)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT used FROM password_reset_tokens", Boolean.class))
+                .isFalse();
         assertThat(doReset(token, NEW_PASSWORD).getResponse().getStatus()).isEqualTo(200);
     }
 
@@ -179,14 +193,16 @@ class ResetPasswordIT extends AbstractPostgresIT {
         register();
         var token = requestToken();
 
-        var stored = jdbc.queryForList("SELECT token_hash FROM password_reset_tokens", String.class);
+        var stored = jdbc.queryForList("SELECT token_hash FROM password_reset_tokens",
+                String.class);
 
         assertThat(stored).containsExactly(TokenHasher.sha256Hex(token));
         assertThat(stored.getFirst()).hasSize(64).isNotEqualTo(token);
     }
 
     @Test
-    @DisplayName("Concorrência: dois resets simultâneos com o mesmo token → um 200 e um 400 (sem 500)")
+    @DisplayName("Concorrência: dois resets simultâneos com o mesmo token → um 200 e um 400 (sem "
+            + "500)")
     void concurrentResetsConsumeTokenOnce() throws Exception {
         register();
         var token = requestToken();
@@ -217,14 +233,17 @@ class ResetPasswordIT extends AbstractPostgresIT {
         register();
         var userId = jdbc.queryForObject("SELECT id FROM users", UUID.class);
         // Token expirado e outro já usado, inseridos direto: devem ser removidos no próximo pedido
-        jdbc.update("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, used) VALUES (?, 'h-expirado', now() - interval '1 hour', false)", userId);
-        jdbc.update("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, used) VALUES (?, 'h-usado', now() + interval '1 hour', true)", userId);
+        jdbc.update("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, used) "
+                + "VALUES (?, 'h-expirado', now() - interval '1 hour', false)", userId);
+        jdbc.update("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, used) "
+                + "VALUES (?, 'h-usado', now() + interval '1 hour', true)", userId);
         var first = requestToken();
 
         var second = requestToken();
 
         assertThat(first).isNotEqualTo(second);
-        await().untilAsserted(() -> assertThat(jdbc.queryForList("SELECT token_hash FROM password_reset_tokens WHERE used = false", String.class))
+        await().untilAsserted(() -> assertThat(jdbc.queryForList("SELECT token_hash "
+                + "FROM password_reset_tokens WHERE used = false", String.class))
                 .containsExactly(TokenHasher.sha256Hex(second)));
         assertThat(jdbc.queryForList("SELECT token_hash FROM password_reset_tokens", String.class))
                 .doesNotContain("h-expirado", "h-usado");
@@ -236,18 +255,23 @@ class ResetPasswordIT extends AbstractPostgresIT {
     @DisplayName("Register aplica a mesma política: 400 sem maiúscula ou sem número")
     void registerEnforcesPasswordPolicy() throws Exception {
         for (var weak : List.of("semmaiuscula1", "SemNumeroAqui", "Curta1A")) {
-            var result = mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(new RegisterRequest("Vendedor Teste", EMAIL, "vendedor-teste", weak)))).andReturn();
+            var result = mockMvc.perform(post("/api/v1/auth/register")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new RegisterRequest("Vendedor Teste",
+                    EMAIL, "vendedor-teste", weak)))).andReturn();
             assertThat(result.getResponse().getStatus()).as(weak).isEqualTo(400);
         }
     }
 
     @Test
-    @DisplayName("X-Request-Id: aceita o do cliente, gera quando inválido/ausente e devolve no header")
+    @DisplayName("X-Request-Id: aceita o do cliente, gera quando inválido/ausente e devolve no "
+            + "header")
     void requestIdHeader() throws Exception {
-        var echoed = mockMvc.perform(post("/api/v1/auth/reset-password").header("X-Request-Id", "meu-id-1")
+        var echoed = mockMvc.perform(post("/api/v1/auth/reset-password")
+                .header("X-Request-Id", "meu-id-1")
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andReturn();
-        var generated = mockMvc.perform(post("/api/v1/auth/reset-password").header("X-Request-Id", "inválido\nx")
+        var generated = mockMvc.perform(post("/api/v1/auth/reset-password")
+                .header("X-Request-Id", "inválido\nx")
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andReturn();
 
         assertThat(echoed.getResponse().getHeader("X-Request-Id")).isEqualTo("meu-id-1");
@@ -255,12 +279,16 @@ class ResetPasswordIT extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("ProblemDetail traz requestId igual ao header X-Request-Id (400 do handler e 401 do resource server)")
+    @DisplayName("ProblemDetail traz requestId igual ao header X-Request-Id (400 do handler e 401 "
+            + "do resource server)")
     void problemDetailCarriesRequestId() throws Exception {
-        var badRequest = mockMvc.perform(post("/api/v1/auth/reset-password").header("X-Request-Id", "rid-400")
+        var badRequest = mockMvc.perform(post("/api/v1/auth/reset-password")
+                .header("X-Request-Id", "rid-400")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new ResetPasswordRequest("nao-existe", NEW_PASSWORD)))).andReturn();
-        var unauthorized = mockMvc.perform(get("/api/v1/me").header("Authorization", "Bearer lixo")).andReturn();
+                .content(objectMapper.writeValueAsString(new ResetPasswordRequest("nao-existe",
+                NEW_PASSWORD)))).andReturn();
+        var unauthorized = mockMvc.perform(get("/api/v1/me").header("Authorization", "Bearer lixo"))
+                .andReturn();
 
         assertThat(badRequest.getResponse().getStatus()).isEqualTo(400);
         assertThat(json(badRequest).get("requestId").asText()).isEqualTo("rid-400")

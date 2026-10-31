@@ -1,5 +1,15 @@
 package com.autofolio.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.autofolio.AbstractPostgresIT;
 import com.autofolio.shared.web.RequestIdFilter;
 import jakarta.mail.internet.MimeMessage;
@@ -19,19 +29,10 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 /**
- * FRONTEND_URL (a variável que o .env fornece) deve chegar ao CORS e ao link do e-mail pelo mapeamento
- * frontend.url do application.yml. A variável é injetada como propriedade do ambiente, como faz o dotenv.
+ * FRONTEND_URL (a variável que o .env fornece) deve chegar ao CORS e ao link do e-mail pelo
+ * mapeamento frontend.url do application.yml. A variável é injetada como propriedade do ambiente,
+ * como faz o dotenv.
  */
 @SpringBootTest(properties = "FRONTEND_URL=https://app.exemplo.com/")
 @AutoConfigureMockMvc
@@ -51,7 +52,8 @@ class FrontendUrlIT extends AbstractPostgresIT {
 
     @BeforeEach
     void setUp() {
-        when(sender.createMimeMessage()).thenAnswer(i -> new JavaMailSenderImpl().createMimeMessage());
+        when(sender.createMimeMessage())
+                .thenAnswer(i -> new JavaMailSenderImpl().createMimeMessage());
         jdbc.update("DELETE FROM password_reset_tokens");
         jdbc.update("DELETE FROM refresh_tokens");
         jdbc.update("DELETE FROM user_profiles");
@@ -67,7 +69,8 @@ class FrontendUrlIT extends AbstractPostgresIT {
                         .header("Access-Control-Request-Headers", RequestIdFilter.HEADER))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", ORIGIN))
-                .andExpect(header().string("Access-Control-Allow-Headers", containsString(RequestIdFilter.HEADER)));
+                .andExpect(header().string("Access-Control-Allow-Headers",
+                containsString(RequestIdFilter.HEADER)));
     }
 
     @Test
@@ -77,7 +80,8 @@ class FrontendUrlIT extends AbstractPostgresIT {
                         .header("Origin", ORIGIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(header().string("Access-Control-Expose-Headers", containsString(RequestIdFilter.HEADER)))
+                .andExpect(header().string("Access-Control-Expose-Headers",
+                containsString(RequestIdFilter.HEADER)))
                 .andExpect(header().exists(RequestIdFilter.HEADER));
     }
 
@@ -94,7 +98,8 @@ class FrontendUrlIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Link do e-mail usa o FRONTEND_URL (sem barra final)")
     void emailLinkUsesFrontendUrl() throws Exception {
-        jdbc.update("INSERT INTO users(name,email,password_hash,slug) VALUES ('U','a@t.com','x','s-front')");
+        jdbc.update("INSERT INTO users(name,email,password_hash,slug) "
+                + "VALUES ('U','a@t.com','x','s-front')");
         mockMvc.perform(post("/api/v1/auth/forgot-password").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"a@t.com\"}")).andExpect(status().isAccepted());
 

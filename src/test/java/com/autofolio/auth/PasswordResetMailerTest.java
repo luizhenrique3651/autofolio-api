@@ -1,19 +1,18 @@
 package com.autofolio.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.autofolio.config.FrontendProperties;
 import jakarta.mail.internet.MimeMessage;
+import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
-
-import java.time.Duration;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @DisplayName("Testes Unitários - PasswordResetMailer")
 class PasswordResetMailerTest {
@@ -78,6 +77,7 @@ class PasswordResetMailerTest {
 
         var captor = ArgumentCaptor.forClass(MimeMessage.class);
         verify(sender).send(captor.capture());
-        assertThat(captor.getValue().getFrom()[0].toString()).isEqualTo(PasswordResetMailer.DEFAULT_FROM);
+        assertThat(captor.getValue().getFrom()[0].toString())
+                .isEqualTo(PasswordResetMailer.DEFAULT_FROM);
     }
 }

@@ -11,6 +11,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 @Configuration
 public class PasswordEncoderConfig {
 
+    /**
+     * Codificador BCrypt com força 12 para as senhas.
+     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(12);

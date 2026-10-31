@@ -5,6 +5,9 @@ package com.autofolio.shared.exception;
  * A mensagem é única de propósito, para não revelar o motivo.
  */
 public class InvalidResetTokenException extends RuntimeException {
+    /**
+     * Cria a exceção com mensagem única para token inválido, expirado ou já utilizado.
+     */
     public InvalidResetTokenException() {
         super("Token de redefinição inválido, expirado ou já utilizado.");
     }

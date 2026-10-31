@@ -6,6 +6,12 @@ import com.autofolio.auth.dto.AccessTokenGrant;
 import com.autofolio.auth.dto.TokenPair;
 import com.autofolio.auth.repository.RefreshTokenRepository;
 import com.autofolio.shared.exception.InvalidRefreshTokenException;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
@@ -14,13 +20,6 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.util.UUID;
 
 /**
  * Emite o par de tokens (JWT de acesso + refresh token opaco persistido) no login e no cadastro,
@@ -37,6 +36,9 @@ public class TokenService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final Clock clock;
 
+    /**
+     * Emite o access token e o refresh token do usuário e persiste o refresh token.
+     */
     @Transactional
     public TokenPair issueTokens(User user) {
         Instant now = clock.instant();
@@ -71,7 +73,8 @@ public class TokenService {
             throw new InvalidRefreshTokenException();
         }
 
-        return new AccessTokenGrant(encodeAccessToken(refreshToken.getUser(), now), ACCESS_TOKEN_TTL.toSeconds());
+        return new AccessTokenGrant(encodeAccessToken(refreshToken.getUser(), now),
+                ACCESS_TOKEN_TTL.toSeconds());
     }
 
     private String encodeAccessToken(User user, Instant now) {

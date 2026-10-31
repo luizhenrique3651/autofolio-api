@@ -8,6 +8,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
  */
 @ResponseStatus(HttpStatus.CONFLICT)
 public class DataConflictException extends RuntimeException {
+    /**
+     * Cria a exceção com a mensagem devolvida ao cliente.
+     */
     public DataConflictException(String message) {
         super(message);
     }

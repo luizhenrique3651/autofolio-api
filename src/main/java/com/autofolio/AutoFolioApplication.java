@@ -4,6 +4,9 @@ import io.github.cdimascio.dotenv.Dotenv;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+/**
+ * Ponto de entrada da aplicação AutoFolio.
+ */
 @SpringBootApplication
 public class AutoFolioApplication {
 
@@ -31,6 +34,9 @@ public class AutoFolioApplication {
         dotenv.entries().forEach(entry -> System.setProperty(entry.getKey(), entry.getValue()));
     }
 
+    /**
+     * Inicia a aplicação Spring Boot.
+     */
     public static void main(String[] args) {
         SpringApplication.run(AutoFolioApplication.class, args);
     }

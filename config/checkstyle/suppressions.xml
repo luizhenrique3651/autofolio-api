@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+    <!--
+      Classes de teste de integração terminam em "IT" (ex.: AuthControllerIT). O sufixo é a
+      convenção do Maven e o filtro '-Dtest=*IT' do projeto depende dele (surefire não roda
+      *IT no "mvn test"). A regra AbbreviationAsWordInName do google_checks rejeita "IT", e
+      renomear as classes quebraria essa convenção. A supressão vale só para esta regra e
+      só para arquivos *IT.java.
+    -->
+    <suppress checks="AbbreviationAsWordInName" files=".*IT\.java"/>
+</suppressions>

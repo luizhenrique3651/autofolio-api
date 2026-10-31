@@ -2,6 +2,7 @@ package com.autofolio.config;
 
 import com.autofolio.shared.web.RequestIdFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,8 +21,6 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.List;
-
 /**
  * Configuração central de segurança utilizando Spring Security 6.
  * Define políticas de acesso, CORS e estado da sessão (stateless).
@@ -38,20 +37,26 @@ public class SecurityConfig {
      * Define a corrente de filtros de segurança (Security Filter Chain).
      */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+            ObjectMapper objectMapper) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable) // Desabilita CSRF para APIs stateless
                 .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Configura CORS
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // API sem estado
+                // API sem estado
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/**").permitAll() // Rotas de login/registro públicas
+                        .requestMatchers("/api/v1/auth/**")
+                        .permitAll() // Rotas de login/registro públicas
                         .requestMatchers("/api/v1/portfolio/**").permitAll() // Portfólio público
-                        .requestMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll() // Documentação Swagger
+                        .requestMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
+                        .permitAll() // Documentação Swagger
                         .anyRequest().authenticated() // Qualquer outra rota exige autenticação
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .bearerTokenResolver(publicRoutesAwareBearerTokenResolver())
-                        .authenticationEntryPoint(new ProblemDetailAuthenticationEntryPoint(objectMapper))
+                        .authenticationEntryPoint(
+                                new ProblemDetailAuthenticationEntryPoint(objectMapper))
                         .jwt(Customizer.withDefaults())) // Valida Bearer JWT (JwtDecoder HS256)
                 .formLogin(AbstractHttpConfigurer::disable) // Remove formulário padrão
                 .httpBasic(AbstractHttpConfigurer::disable) // Remove autenticação básica
@@ -82,11 +87,13 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(List.of(frontend.url()));
         
         // Métodos HTTP permitidos
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE",
+                "OPTIONS"));
         
         // Headers permitidos
         configuration.setAllowedHeaders(List.of(
-                "Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin", RequestIdFilter.HEADER));
+                "Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin",
+                RequestIdFilter.HEADER));
 
         // Permite ao frontend ler o id de rastreio devolvido pela API
         configuration.setExposedHeaders(List.of(RequestIdFilter.HEADER));

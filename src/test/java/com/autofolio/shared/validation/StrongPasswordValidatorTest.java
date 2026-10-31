@@ -1,11 +1,11 @@
 package com.autofolio.shared.validation;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("Testes Unitários - StrongPasswordValidator")
 class StrongPasswordValidatorTest {
@@ -20,7 +20,8 @@ class StrongPasswordValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Abcde1", "abcdefg1", "ABCDEFGH", "Abcdefgh", "abcdefgh", "12345678", ""})
+    @ValueSource(strings = {"Abcde1", "abcdefg1", "ABCDEFGH", "Abcdefgh", "abcdefgh", "12345678",
+            ""})
     @DisplayName("Rejeita senhas curtas ou sem número/maiúscula")
     void shouldRejectInvalid(String password) {
         assertThat(validator.isValid(password, null)).isFalse();

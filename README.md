@@ -231,6 +231,16 @@ mvn test -Dtest='*IT'       # testes de integração (PostgreSQL real via Testco
 
 Meta de qualidade (Definition of Done): cobertura ≥ 80% nos services.
 
+**Checkstyle** (estilo Google com indentação de 4 espaços, regras em `config/checkstyle/checkstyle.xml`): roda automaticamente na fase `validate` (portanto em `mvn test`, `mvn package` etc.) e **falha o build** em qualquer violação, em `src/main` e `src/test`. Para rodar isolado:
+
+```bash
+mvn checkstyle:check    # deve terminar com 0 violações
+```
+
+Supressões justificadas ficam em `config/checkstyle/suppressions.xml`. Decisão e justificativa: [ADR-002](docs/adr/ADR-002-estilo-de-codigo-checkstyle-google-4-espacos.md) (e ADR-001 §7.3).
+
+**IDE:** configure 4 espaços de indentação, 8 de continuação, 100 colunas e a ordem de imports do Google (estáticos primeiro, uma linha em branco entre o grupo estático e os demais), ou importe o `config/checkstyle/checkstyle.xml` no plugin CheckStyle-IDEA.
+
 ---
 
 ## 📐 Padrões de desenvolvimento

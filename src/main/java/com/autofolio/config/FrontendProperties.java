@@ -9,6 +9,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "frontend")
 public record FrontendProperties(String url) {
 
+    /**
+     * Exige que {@code frontend.url} esteja preenchida.
+     */
     public FrontendProperties {
         if (url == null || url.isBlank()) {
             throw new IllegalArgumentException("frontend.url é obrigatório");

@@ -1,6 +1,9 @@
 package com.autofolio.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -11,24 +14,23 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.server.resource.BearerTokenError;
 import org.springframework.security.oauth2.server.resource.BearerTokenErrorCodes;
 
-import java.nio.charset.StandardCharsets;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 @DisplayName("Testes Unitários - ProblemDetailAuthenticationEntryPoint")
 class ProblemDetailAuthenticationEntryPointTest {
 
     private final ObjectMapper objectMapper = Jackson2ObjectMapperBuilder.json().build();
-    private final ProblemDetailAuthenticationEntryPoint entryPoint = new ProblemDetailAuthenticationEntryPoint(objectMapper);
+    private final ProblemDetailAuthenticationEntryPoint entryPoint =
+            new ProblemDetailAuthenticationEntryPoint(objectMapper);
 
     @Test
     @DisplayName("Erro invalid_request do Bearer gera 400 com ProblemDetail de requisição inválida")
     void shouldReturn400ForInvalidRequest() throws Exception {
         var response = new MockHttpServletResponse();
-        var error = new BearerTokenError(BearerTokenErrorCodes.INVALID_REQUEST, HttpStatus.BAD_REQUEST,
+        var error = new BearerTokenError(BearerTokenErrorCodes.INVALID_REQUEST,
+                HttpStatus.BAD_REQUEST,
                 "malformado", null);
 
-        entryPoint.commence(new MockHttpServletRequest(), response, new OAuth2AuthenticationException(error));
+        entryPoint.commence(new MockHttpServletRequest(), response,
+                new OAuth2AuthenticationException(error));
 
         var json = objectMapper.readTree(response.getContentAsString(StandardCharsets.UTF_8));
         assertThat(response.getStatus()).isEqualTo(400);

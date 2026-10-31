@@ -2,7 +2,6 @@ package com.autofolio.shared.validation;
 
 import jakarta.validation.Constraint;
 import jakarta.validation.Payload;
-
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -19,9 +18,19 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface StrongPassword {
 
-    String message() default "A senha deve ter no mínimo 8 caracteres e no máximo 72 bytes, com ao menos 1 número e 1 letra maiúscula.";
+    /**
+     * Mensagem de erro de validação.
+     */
+    String message() default "A senha deve ter no mínimo 8 caracteres e no máximo 72 bytes, com "
+            + "ao menos 1 número e 1 letra maiúscula.";
 
+    /**
+     * Grupos de validação.
+     */
     Class<?>[] groups() default {};
 
+    /**
+     * Carga útil da validação.
+     */
     Class<? extends Payload>[] payload() default {};
 }

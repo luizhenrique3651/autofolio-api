@@ -3,6 +3,10 @@ package com.autofolio.auth;
 import com.autofolio.config.FrontendProperties;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.mail.MailPreparationException;
@@ -10,11 +14,6 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.HtmlUtils;
-
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 
 /**
  * Monta e envia o e-mail HTML de redefinição de senha.
@@ -24,7 +23,8 @@ import java.time.Duration;
 @Component
 public class PasswordResetMailer {
 
-    // Só fallback para MAIL_FROM em branco (o default de propriedade ausente é o do application.yml)
+    // Só fallback para MAIL_FROM em branco (o default de propriedade ausente é
+    // o do application.yml)
     static final String DEFAULT_FROM = "noreply@autofolio.com";
     static final String SUBJECT = "AutoFolio - Redefinição de senha";
     private static final String TEMPLATE = "templates/email/password-reset.html";
@@ -34,6 +34,9 @@ public class PasswordResetMailer {
     private final String from;
     private final String template;
 
+    /**
+     * Cria o envio de e-mail de redefinição de senha.
+     */
     public PasswordResetMailer(JavaMailSender mailSender,
                                FrontendProperties frontend,
                                @Value("${app.mail.from}") String from) {

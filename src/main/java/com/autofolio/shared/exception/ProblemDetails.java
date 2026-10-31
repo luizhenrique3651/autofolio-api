@@ -1,15 +1,14 @@
 package com.autofolio.shared.exception;
 
 import com.autofolio.shared.web.RequestIdFilter;
-import org.slf4j.MDC;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ProblemDetail;
-
 import java.net.URI;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
+import org.slf4j.MDC;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ProblemDetail;
 
 /**
  * Fábrica de ProblemDetail padronizados (RFC 7807).
@@ -29,24 +28,37 @@ public final class ProblemDetails {
             HttpStatus.METHOD_NOT_ALLOWED, new Label("Método Não Permitido", "method-not-allowed"),
             HttpStatus.NOT_ACCEPTABLE, new Label("Formato Não Aceito", "not-acceptable"),
             HttpStatus.CONFLICT, new Label("Conflito de Dados", "conflict"),
-            HttpStatus.UNSUPPORTED_MEDIA_TYPE, new Label("Tipo de Mídia Não Suportado", "unsupported-media-type"),
+            HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+            new Label("Tipo de Mídia Não Suportado", "unsupported-media-type"),
             HttpStatus.INTERNAL_SERVER_ERROR, new Label("Erro Interno", "internal-error"));
 
     private ProblemDetails() {
     }
 
+    /**
+     * Cria o ProblemDetail de 401.
+     */
     public static ProblemDetail unauthorized(String detail) {
         return build(HttpStatus.UNAUTHORIZED, detail);
     }
 
+    /**
+     * Cria o ProblemDetail de 400.
+     */
     public static ProblemDetail badRequest(String detail) {
         return build(HttpStatus.BAD_REQUEST, detail);
     }
 
+    /**
+     * Cria o ProblemDetail de 409.
+     */
     public static ProblemDetail conflict(String detail) {
         return build(HttpStatus.CONFLICT, detail);
     }
 
+    /**
+     * Cria o ProblemDetail de 500.
+     */
     public static ProblemDetail internalError(String detail) {
         return build(HttpStatus.INTERNAL_SERVER_ERROR, detail);
     }
@@ -56,12 +68,14 @@ public final class ProblemDetails {
      * type autofolio quando for about:blank e timestamp quando ausente.
      */
     public static void normalize(ProblemDetail problemDetail) {
-        if (ProblemDetail.forStatus(problemDetail.getStatus()).getType().equals(problemDetail.getType())) {
+        if (ProblemDetail.forStatus(problemDetail.getStatus()).getType()
+                .equals(problemDetail.getType())) {
             var label = labelFor(HttpStatusCode.valueOf(problemDetail.getStatus()));
             problemDetail.setTitle(label.title());
             problemDetail.setType(URI.create(TYPE_BASE + label.slug()));
         }
-        if (problemDetail.getProperties() == null || !problemDetail.getProperties().containsKey("timestamp")) {
+        if (problemDetail.getProperties() == null || !problemDetail.getProperties()
+                .containsKey("timestamp")) {
             problemDetail.setProperty("timestamp", Instant.now());
         }
         addRequestId(problemDetail);
@@ -76,7 +90,8 @@ public final class ProblemDetails {
         if (label != null) {
             return label;
         }
-        return new Label(status.getReasonPhrase(), status.getReasonPhrase().toLowerCase(Locale.ROOT).replace(' ', '-'));
+        return new Label(status.getReasonPhrase(), status.getReasonPhrase().toLowerCase(Locale.ROOT)
+                .replace(' ', '-'));
     }
 
     private static ProblemDetail build(HttpStatus status, String detail) {

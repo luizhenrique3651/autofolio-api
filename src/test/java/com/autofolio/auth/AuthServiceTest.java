@@ -1,17 +1,28 @@
 package com.autofolio.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.autofolio.auth.domain.User;
 import com.autofolio.auth.domain.UserProfile;
+import com.autofolio.auth.dto.AccessTokenGrant;
 import com.autofolio.auth.dto.ForgotPasswordRequest;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.RefreshRequest;
-import com.autofolio.auth.dto.AccessTokenGrant;
 import com.autofolio.auth.dto.RegisterRequest;
 import com.autofolio.auth.dto.TokenPair;
-import com.autofolio.shared.exception.InvalidCredentialsException;
 import com.autofolio.auth.repository.UserProfileRepository;
 import com.autofolio.auth.repository.UserRepository;
 import com.autofolio.shared.exception.DataConflictException;
+import com.autofolio.shared.exception.InvalidCredentialsException;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,12 +30,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
-
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Testes Unitários - AuthService")
@@ -109,7 +114,8 @@ class AuthServiceTest {
     @Test
     @DisplayName("Deve autenticar com credenciais válidas e retornar os tokens")
     void shouldLoginSuccessfully() {
-        var user = User.builder().name("Luiz").email("luiz@example.com").password("hash").slug("luiz-dev").build();
+        var user = User.builder().name("Luiz").email("luiz@example.com").password("hash")
+                .slug("luiz-dev").build();
         var tokens = new TokenPair("access", "refresh", 3600);
         when(userRepository.findByEmail("luiz@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("password123", "hash")).thenReturn(true);
@@ -128,7 +134,8 @@ class AuthServiceTest {
         when(userRepository.findByEmail("x@example.com")).thenReturn(Optional.empty());
         when(passwordEncoder.matches(eq("password123"), anyString())).thenReturn(false);
 
-        assertThatThrownBy(() -> authService.login(new LoginRequest("x@example.com", "password123")))
+        assertThatThrownBy(() -> authService.login(new LoginRequest("x@example.com",
+                "password123")))
                 .isInstanceOf(InvalidCredentialsException.class);
 
         verify(passwordEncoder).matches(eq("password123"), anyString());
@@ -138,7 +145,8 @@ class AuthServiceTest {
     @Test
     @DisplayName("Deve lançar InvalidCredentialsException quando a senha está errada")
     void shouldFailLoginWhenPasswordWrong() {
-        var user = User.builder().name("Luiz").email("luiz@example.com").password("hash").slug("luiz-dev").build();
+        var user = User.builder().name("Luiz").email("luiz@example.com").password("hash")
+                .slug("luiz-dev").build();
         when(userRepository.findByEmail("luiz@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
 
@@ -171,7 +179,8 @@ class AuthServiceTest {
     @Test
     @DisplayName("Deve delegar a redefinição de senha ao PasswordResetService")
     void shouldDelegateResetPassword() {
-        authService.resetPassword(new com.autofolio.auth.dto.ResetPasswordRequest("tok", "Senha1234"));
+        authService.resetPassword(new com.autofolio.auth.dto.ResetPasswordRequest("tok",
+                "Senha1234"));
 
         verify(passwordResetService).resetPassword("tok", "Senha1234");
     }

@@ -2,9 +2,11 @@ package com.autofolio.shared.validation;
 
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
-
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Valida a política de senha: tamanho mínimo, máximo de bytes, número e letra maiúscula.
+ */
 public class StrongPasswordValidator implements ConstraintValidator<StrongPassword, String> {
 
     static final int MIN_LENGTH = 8;

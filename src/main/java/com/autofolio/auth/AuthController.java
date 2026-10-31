@@ -32,7 +32,8 @@ public class AuthController {
     /**
      * Endpoint para cadastro de um novo vendedor.
      */
-    @Operation(summary = "Cadastro de novo vendedor", description = "Cria usuário e perfil e retorna os tokens de acesso.")
+    @Operation(summary = "Cadastro de novo vendedor",
+            description = "Cria usuário e perfil e retorna os tokens de acesso.")
     @ApiResponse(responseCode = "201", description = "Vendedor cadastrado com sucesso")
     @ApiResponse(responseCode = "400", description = "Dados inválidos")
     @ApiResponse(responseCode = "409", description = "E-mail ou slug já em uso")
@@ -45,7 +46,8 @@ public class AuthController {
     /**
      * Endpoint de login por e-mail e senha.
      */
-    @Operation(summary = "Login por e-mail e senha", description = "Retorna JWT de acesso (1h) e refresh token opaco (30 dias).")
+    @Operation(summary = "Login por e-mail e senha",
+            description = "Retorna JWT de acesso (1h) e refresh token opaco (30 dias).")
     @ApiResponse(responseCode = "200", description = "Login realizado com sucesso")
     @ApiResponse(responseCode = "401", description = "Credenciais inválidas")
     @PostMapping("/login")
@@ -56,10 +58,13 @@ public class AuthController {
     /**
      * Renova o access token sem rotacionar o refresh token.
      */
-    @Operation(summary = "Renovação do access token", description = "Recebe um refresh token válido e retorna novo JWT de acesso (1h). O refresh token não é rotacionado.")
+    @Operation(summary = "Renovação do access token",
+            description = "Recebe um refresh token válido e retorna novo JWT de acesso (1h). "
+                    + "O refresh token não é rotacionado.")
     @ApiResponse(responseCode = "200", description = "Access token renovado")
     @ApiResponse(responseCode = "400", description = "Corpo inválido")
-    @ApiResponse(responseCode = "401", description = "Refresh token inexistente, revogado ou expirado")
+    @ApiResponse(responseCode = "401",
+            description = "Refresh token inexistente, revogado ou expirado")
     @PostMapping("/refresh")
     public ResponseEntity<RefreshResponse> refresh(@Valid @RequestBody RefreshRequest request) {
         return ResponseEntity.ok(authService.refresh(request));
@@ -68,8 +73,11 @@ public class AuthController {
     /**
      * Solicita o e-mail de redefinição de senha.
      */
-    @Operation(summary = "Recuperação de senha", description = "Se o e-mail estiver cadastrado, envia um link de redefinição válido por 1 hora. Responde sempre 202, exista o e-mail ou não.")
-    @ApiResponse(responseCode = "202", description = "Solicitação aceita (independe de o e-mail existir)")
+    @Operation(summary = "Recuperação de senha",
+            description = "Se o e-mail estiver cadastrado, envia um link de redefinição válido "
+                    + "por 1 hora. Responde sempre 202, exista o e-mail ou não.")
+    @ApiResponse(responseCode = "202",
+            description = "Solicitação aceita (independe de o e-mail existir)")
     @ApiResponse(responseCode = "400", description = "E-mail ausente ou malformado")
     @PostMapping("/forgot-password")
     public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
@@ -80,9 +88,14 @@ public class AuthController {
     /**
      * Redefine a senha com o token de recuperação.
      */
-    @Operation(summary = "Redefinição de senha", description = "Recebe o token enviado por e-mail e a nova senha (mínimo 8 caracteres, 1 número e 1 letra maiúscula). O token é de uso único e todos os refresh tokens do usuário são revogados.")
+    @Operation(summary = "Redefinição de senha",
+            description = "Recebe o token enviado por e-mail e a nova senha (mínimo 8 caracteres, "
+                    + "1 número e 1 letra maiúscula). O token é de uso único e todos os refresh "
+                    + "tokens do usuário são revogados.")
     @ApiResponse(responseCode = "200", description = "Senha redefinida com sucesso")
-    @ApiResponse(responseCode = "400", description = "Token inválido, expirado ou já utilizado (resposta idêntica), ou nova senha fora da política")
+    @ApiResponse(responseCode = "400",
+            description = "Token inválido, expirado ou já utilizado (resposta idêntica), "
+                    + "ou nova senha fora da política")
     @PostMapping("/reset-password")
     public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);

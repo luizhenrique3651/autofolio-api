@@ -1,5 +1,10 @@
 package com.autofolio.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.io.IOException;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.env.YamlPropertySourceLoader;
@@ -7,20 +12,16 @@ import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.ClassPathResource;
 
-import java.io.IOException;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 /**
- * Resolve o frontend.url com os ymls reais (prod sobre o base), sem subir o contexto: o prod não pode herdar
- * o localhost do base, senão subiria sem FRONTEND_URL com CORS e link de e-mail apontando para o lugar errado.
+ * Resolve o frontend.url com os ymls reais (prod sobre o base), sem subir o contexto: o prod não
+ * pode herdar o localhost do base, senão subiria sem FRONTEND_URL com CORS e link de e-mail
+ * apontando para o lugar errado.
  */
 @DisplayName("Testes Unitários - frontend.url no perfil prod")
 class ProdFrontendUrlConfigTest {
 
-    private StandardEnvironment environment(String profileFile, Map<String, Object> variables) throws IOException {
+    private StandardEnvironment environment(String profileFile, Map<String,
+            Object> variables) throws IOException {
         var env = new StandardEnvironment();
         var loader = new YamlPropertySourceLoader();
         env.getPropertySources().addFirst(new MapPropertySource("variaveis", variables));
@@ -28,7 +29,8 @@ class ProdFrontendUrlConfigTest {
         var sources = env.getPropertySources();
         sources.addLast(loader.load("base", new ClassPathResource("application.yml")).getFirst());
         if (profileFile != null) {
-            sources.addBefore("base", loader.load("perfil", new ClassPathResource(profileFile)).getFirst());
+            sources.addBefore("base", loader.load("perfil", new ClassPathResource(profileFile))
+                    .getFirst());
         }
         return env;
     }

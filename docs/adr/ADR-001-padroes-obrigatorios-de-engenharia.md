@@ -82,7 +82,7 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
 
 1. **Inspeções do IntelliJ** (Qodana Community, perfil "Project Default") rodam em toda task. Todo achado é tratado, exceto a regra `unused`, que é falso positivo sem o plugin Spring. Inspeções exclusivas do Ultimate (autowire, SQL) são cobertas pelo `ApplicationContextIT` e pela configuração do Data Source na IDE.
 2. **Compilação com `-Xlint:all`** não tem warnings novos.
-3. **Checkstyle com `google_checks`** é o conjunto de regras do projeto. Até a task de configuração do plugin, as violações não bloqueiam; depois dela, a DoD exige zero.
+3. **Estilo:** Google Java Style com indentação de 4 espaços, verificado pelo Checkstyle no build, que bloqueia (fase `validate`, `src/main` e `src/test`, zero violações na DoD). Regras em `config/checkstyle/checkstyle.xml`; supressões só em `config/checkstyle/suppressions.xml`, justificadas. Ver [ADR-002](ADR-002-estilo-de-codigo-checkstyle-google-4-espacos.md). Suprimida hoje: `AbbreviationAsWordInName` nos `*IT.java` (o sufixo `IT` é a convenção do filtro `-Dtest='*IT'`).
 4. **Warnings** são avaliados um a um pelo tech lead (corrigir, adiar como débito ou ignorar com justificativa).
 
 ### 8. Processo de entrega
@@ -148,12 +148,12 @@ A Opção C troca um pequeno custo de manutenção por previsibilidade. Em tasks
 - **Fica mais difícil:** atalhos. Toda correção de produção depois de uma aprovação custa uma nova rodada de revisão.
 - **Precisa ser revisitado:**
   - esta ADR, a cada nova decisão transversal (que deve gerar ADR própria ou uma emenda aqui);
-  - a regra de checkstyle, depois da task de configuração;
+  - as supressões do checkstyle, a cada nova exceção;
   - a exceção do `CloudinaryIntegrationTest`.
 
 ## Action Items
 
-1. [ ] Configurar o plugin de checkstyle com `google_checks` e zerar as violações (task já na fila).
+1. [x] Configurar o plugin de checkstyle com `google_checks` e zerar as violações.
 2. [ ] Configurar o `maven-failsafe-plugin` para os `*IT` rodarem em `mvn verify` (pré-requisito do CI na AF-043).
 3. [ ] Configurar `-javaagent` do Mockito no surefire.
 4. [ ] Isolar o `CloudinaryIntegrationTest` da rede externa (mock ou tag separada).

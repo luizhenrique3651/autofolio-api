@@ -1,5 +1,20 @@
 package com.autofolio.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.autofolio.AbstractPostgresIT;
 import com.autofolio.auth.dto.ForgotPasswordRequest;
 import com.autofolio.auth.dto.LoginRequest;
@@ -9,31 +24,10 @@ import com.autofolio.shared.security.TokenHasher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.junit.jupiter.api.BeforeEach;
-import org.mockito.ArgumentCaptor;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullSource;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.http.MediaType;
-import org.springframework.mail.MailSendException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
-import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -46,22 +40,26 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.after;
-import static org.mockito.Mockito.timeout;
-import static org.mockito.Mockito.verify;
-
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mail.MailSendException;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -107,7 +105,8 @@ class AuthControllerIT extends AbstractPostgresIT {
     private MvcResult register() throws Exception {
         return mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new RegisterRequest("Vendedor Teste", EMAIL, SLUG, PASSWORD))))
+                        .content(objectMapper.writeValueAsString(new RegisterRequest(
+                                "Vendedor Teste", EMAIL, SLUG, PASSWORD))))
                 .andExpect(status().isCreated())
                 .andReturn();
     }
@@ -115,12 +114,14 @@ class AuthControllerIT extends AbstractPostgresIT {
     private MvcResult login(String email, String password) throws Exception {
         return mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new LoginRequest(email, password))))
+                        .content(objectMapper.writeValueAsString(new LoginRequest(email,
+                        password))))
                 .andReturn();
     }
 
     private JsonNode body(MvcResult result) throws Exception {
-        return objectMapper.readTree(result.getResponse().getContentAsString(StandardCharsets.UTF_8));
+        return objectMapper.readTree(result.getResponse()
+                .getContentAsString(StandardCharsets.UTF_8));
     }
 
     @Test
@@ -130,7 +131,8 @@ class AuthControllerIT extends AbstractPostgresIT {
 
         assertThat(jwtDecoder.decode(json.get("accessToken").asText()).getSubject())
                 .isEqualTo(json.get("user").get("id").asText());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class,
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?",
+                Integer.class,
                 json.get("refreshToken").asText())).isEqualTo(1);
     }
 
@@ -138,14 +140,17 @@ class AuthControllerIT extends AbstractPostgresIT {
     @DisplayName("Registro: 400 com dados inválidos e 409 com e-mail duplicado")
     void registerErrors() throws Exception {
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new RegisterRequest("", "x", "Slug Ruim", "s"))))
+                        .content(objectMapper.writeValueAsString(new RegisterRequest("", "x",
+                        "Slug Ruim", "s"))))
                 .andExpect(status().isBadRequest());
         register();
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new RegisterRequest("Outro", EMAIL, "outro", PASSWORD))))
+                        .content(objectMapper.writeValueAsString(new RegisterRequest("Outro", EMAIL,
+                        "outro", PASSWORD))))
                 .andExpect(status().isConflict());
         mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new RegisterRequest("Outro", "outro@teste.com", SLUG, PASSWORD))))
+                        .content(objectMapper.writeValueAsString(new RegisterRequest("Outro",
+                        "outro@teste.com", SLUG, PASSWORD))))
                 .andExpect(status().isConflict());
     }
 
@@ -165,7 +170,8 @@ class AuthControllerIT extends AbstractPostgresIT {
         assertThat(jwt.getSubject()).isEqualTo(userId);
         assertThat(jwt.getClaimAsString("slug")).isEqualTo(SLUG);
         assertThat(jwt.getIssuedAt()).isNotNull();
-        assertThat(Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt())).isEqualTo(Duration.ofSeconds(3600));
+        assertThat(Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt()))
+                .isEqualTo(Duration.ofSeconds(3600));
     }
 
     @Test
@@ -175,7 +181,8 @@ class AuthControllerIT extends AbstractPostgresIT {
         var refresh = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
 
         Map<String, Object> row = jdbc.queryForMap(
-                "SELECT user_id::text AS user_id, expires_at, revoked FROM refresh_tokens WHERE token = ?", refresh);
+                "SELECT user_id::text AS user_id, expires_at, revoked FROM refresh_tokens "
+                + "WHERE token = ?", refresh);
         assertThat(row.get("user_id")).isEqualTo(userId);
         assertThat((Boolean) row.get("revoked")).isFalse();
         var expiresAt = ((Timestamp) row.get("expires_at")).toInstant().atOffset(ZoneOffset.UTC);
@@ -190,11 +197,13 @@ class AuthControllerIT extends AbstractPostgresIT {
         var second = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
 
         assertThat(first).isNotEqualTo(second);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class))
+                .isEqualTo(3);
     }
 
     @Test
-    @DisplayName("Login: e-mail inexistente e senha errada retornam resposta idêntica (401 genérico)")
+    @DisplayName("Login: e-mail inexistente e senha errada retornam resposta idêntica (401 "
+            + "genérico)")
     void invalidCredentialsAreIndistinguishable() throws Exception {
         register();
         var wrongPassword = login(EMAIL, "senha-errada-1");
@@ -206,10 +215,13 @@ class AuthControllerIT extends AbstractPostgresIT {
         var b = body(unknownEmail);
         assertThat(a.get("detail")).isEqualTo(b.get("detail"));
         assertThat(a.get("title")).isEqualTo(b.get("title"));
-        assertThat(a.get("detail").asText()).doesNotContain(EMAIL).doesNotContainIgnoringCase("senha");
-        assertThat(wrongPassword.getResponse().getContentAsString(StandardCharsets.UTF_8)).doesNotContain("$2");
+        assertThat(a.get("detail").asText()).doesNotContain(EMAIL)
+                .doesNotContainIgnoringCase("senha");
+        assertThat(wrongPassword.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .doesNotContain("$2");
         // falha de login não cria refresh token (só o do registro)
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class))
+                .isEqualTo(1);
     }
 
     @Test
@@ -218,34 +230,41 @@ class AuthControllerIT extends AbstractPostgresIT {
         mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"nao-e-email\",\"password\":\"\"}"))
                 .andExpect(status().isBadRequest());
-        mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content("{}"))
+        mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     @DisplayName("Login: 400 com JSON malformado")
     void loginMalformedJson() throws Exception {
-        var result = mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(MALFORMED_JSON))
+        var result = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON).content(MALFORMED_JSON))
                 .andReturn();
 
         assertProblem(result, 400, "Requisição Inválida", "bad-request");
-        assertThat(body(result).get("detail").asText()).isEqualTo("Corpo da requisição ausente ou malformado.");
-        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8)).doesNotContain("Jackson", "Unexpected", "line:");
+        assertThat(body(result).get("detail").asText())
+                .isEqualTo("Corpo da requisição ausente ou malformado.");
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .doesNotContain("Jackson", "Unexpected", "line:");
     }
 
     @Test
     @DisplayName("Login: Bearer inválido em /auth/** não gera 401 por token")
     void invalidBearerOnAuthRouteIsIgnored() throws Exception {
         register();
-        mockMvc.perform(post("/api/v1/auth/login").header("Authorization", "Bearer lixo.invalido.token")
+        mockMvc.perform(post("/api/v1/auth/login")
+                .header("Authorization", "Bearer lixo.invalido.token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new LoginRequest(EMAIL, PASSWORD))))
+                        .content(objectMapper.writeValueAsString(new LoginRequest(EMAIL,
+                        PASSWORD))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").exists());
     }
 
     @Test
-    @DisplayName("Rota protegida: 401 sem token, com Bearer inválido; 200/404 (não 401) com JWT válido")
+    @DisplayName("Rota protegida: 401 sem token, com Bearer inválido; 200/404 (não 401) com JWT "
+            + "válido")
     void protectedRoute() throws Exception {
         mockMvc.perform(get("/api/v1/vehicles")).andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer lixo"))
@@ -253,7 +272,8 @@ class AuthControllerIT extends AbstractPostgresIT {
 
         register();
         var token = body(login(EMAIL, PASSWORD)).get("accessToken").asText();
-        var status = mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer " + token))
+        var status = mockMvc.perform(get("/api/v1/vehicles")
+                .header("Authorization", "Bearer " + token))
                 .andReturn().getResponse().getStatus();
         assertThat(status).isNotEqualTo(401).isNotEqualTo(403);
     }
@@ -266,7 +286,8 @@ class AuthControllerIT extends AbstractPostgresIT {
     }
 
     @Test
-    @DisplayName("Refresh: 200 com novo access token válido; refresh token reutilizável e inalterado")
+    @DisplayName("Refresh: 200 com novo access token válido; refresh token reutilizável e "
+            + "inalterado")
     void refreshSuccessAndReusable() throws Exception {
         var userId = body(register()).get("user").get("id").asText();
         var rt = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
@@ -277,10 +298,13 @@ class AuthControllerIT extends AbstractPostgresIT {
             assertThat(result.getResponse().getStatus()).isEqualTo(200);
             var json = body(result);
             assertThat(json.get("expiresIn").asInt()).isEqualTo(3600);
-            assertThat(jwtDecoder.decode(json.get("accessToken").asText()).getSubject()).isEqualTo(userId);
+            assertThat(jwtDecoder.decode(json.get("accessToken").asText()).getSubject())
+                    .isEqualTo(userId);
         }
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class)).isEqualTo(before);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, rt)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens", Integer.class))
+                .isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?",
+                Integer.class, rt)).isEqualTo(1);
     }
 
     @Test
@@ -298,7 +322,8 @@ class AuthControllerIT extends AbstractPostgresIT {
         jdbc.update("UPDATE refresh_tokens SET revoked = true WHERE token = ?", revoked);
 
         assertThat(refresh(revoked).getResponse().getStatus()).isEqualTo(401);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, revoked)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?",
+                Integer.class, revoked)).isEqualTo(1);
     }
 
     @Test
@@ -306,12 +331,15 @@ class AuthControllerIT extends AbstractPostgresIT {
     void refreshExpiredToken() throws Exception {
         register();
         var expired = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
-        jdbc.update("UPDATE refresh_tokens SET expires_at = now() - interval '1 minute' WHERE token = ?", expired);
+        jdbc.update("UPDATE refresh_tokens SET expires_at = now() - interval '1 minute' "
+                + "WHERE token = ?", expired);
 
         var result = refresh(expired);
         assertThat(result.getResponse().getStatus()).isEqualTo(401);
-        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8)).contains("Refresh token inválido ou expirado.");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, expired)).isZero();
+        assertThat(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .contains("Refresh token inválido ou expirado.");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?",
+                Integer.class, expired)).isZero();
     }
 
     @Test
@@ -324,20 +352,23 @@ class AuthControllerIT extends AbstractPostgresIT {
         assertThat(jwt.getSubject()).isEqualTo(userId);
         assertThat(jwt.<String>getClaim("slug")).isEqualTo(SLUG);
         assertThat(jwt.getIssuedAt()).isNotNull();
-        assertThat(Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt())).isEqualTo(Duration.ofHours(1));
+        assertThat(Duration.between(jwt.getIssuedAt(), jwt.getExpiresAt()))
+                .isEqualTo(Duration.ofHours(1));
         var st = mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer " + at))
                 .andReturn().getResponse().getStatus();
         assertThat(st).isNotEqualTo(401).isNotEqualTo(403);
     }
 
     @Test
-    @DisplayName("Refresh: 401 idêntico (corpo, content-type) para inexistente, revogado e expirado")
+    @DisplayName("Refresh: 401 idêntico (corpo, content-type) para inexistente, revogado e "
+            + "expirado")
     void refreshInvalidTokensHaveSameResponse() throws Exception {
         register();
         var revoked = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
         var expired = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
         jdbc.update("UPDATE refresh_tokens SET revoked = true WHERE token = ?", revoked);
-        jdbc.update("UPDATE refresh_tokens SET expires_at = now() - interval '1 second' WHERE token = ?", expired);
+        jdbc.update("UPDATE refresh_tokens SET expires_at = now() - interval '1 second' "
+                + "WHERE token = ?", expired);
         var normalized = new HashSet<String>();
         for (var t : List.of("nao-existe", revoked, expired)) {
             var r = refresh(t);
@@ -356,23 +387,28 @@ class AuthControllerIT extends AbstractPostgresIT {
     void refreshExpiredOnlyDeletesItself() throws Exception {
         register();
         var a = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
+        jdbc.update("UPDATE refresh_tokens SET expires_at = now() - interval '1 minute', "
+                + "revoked = true WHERE token = ?", a);
+        assertThat(refresh(a).getResponse().getStatus()).isEqualTo(401);
+        assertThat(refresh(a).getResponse().getStatus()).isEqualTo(401);
         var b = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
-        jdbc.update("UPDATE refresh_tokens SET expires_at = now() - interval '1 minute', revoked = true WHERE token = ?", a);
-        assertThat(refresh(a).getResponse().getStatus()).isEqualTo(401);
-        assertThat(refresh(a).getResponse().getStatus()).isEqualTo(401);
         assertThat(refresh(b).getResponse().getStatus()).isEqualTo(200);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, a)).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, b)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?",
+                Integer.class, a)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?",
+                Integer.class, b)).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("Refresh: requisições concorrentes no mesmo token expirado → todas 401, nenhuma 500")
+    @DisplayName("Refresh: requisições concorrentes no mesmo token expirado → todas 401, nenhuma "
+            + "500")
     void refreshConcurrentExpiredNever500() throws Exception {
         var userId = UUID.fromString(body(register()).get("user").get("id").asText());
         for (int round = 0; round < 15; round++) {
             // Insere direto no banco: evita o custo de BCrypt de um login por rodada
             var rt = UUID.randomUUID().toString();
-            jdbc.update("INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, now() - interval '1 minute')", userId, rt);
+            jdbc.update("INSERT INTO refresh_tokens (user_id, token, expires_at) "
+                    + "VALUES (?, ?, now() - interval '1 minute')", userId, rt);
             var go = new CountDownLatch(1);
             try (ExecutorService pool = Executors.newFixedThreadPool(4)) {
                 try {
@@ -388,42 +424,53 @@ class AuthControllerIT extends AbstractPostgresIT {
                         assertThat(future.get(10, TimeUnit.SECONDS)).isEqualTo(401);
                     }
                 } finally {
-                    // Se o get estourar o timeout, close() esperaria as threads travadas para sempre
+                    // Se o get estourar o timeout, close() esperaria as threads travadas
+                    // para sempre
                     pool.shutdownNow();
                 }
             }
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, rt)).isZero();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?",
+                    Integer.class, rt)).isZero();
         }
     }
 
     @Test
-    @DisplayName("Refresh: 400 para campo ausente/null/branco/longo demais, JSON malformado e sem body")
+    @DisplayName("Refresh: 400 para campo ausente/null/branco/longo demais, JSON malformado e sem "
+            + "body")
     void refreshBadRequests() throws Exception {
-        for (var json : List.of("{}", "{\"refreshToken\":null}", "{\"refreshToken\":\"\"}", "{\"refreshToken\":\"   \"}")) {
-            var r = mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(json)).andReturn();
+        for (var json : List.of("{}", "{\"refreshToken\":null}", "{\"refreshToken\":\"\"}",
+                "{\"refreshToken\":\"   \"}")) {
+            var r = mockMvc.perform(post("/api/v1/auth/refresh")
+                    .contentType(MediaType.APPLICATION_JSON).content(json)).andReturn();
             assertThat(r.getResponse().getStatus()).as(json).isEqualTo(400);
             assertThat(r.getResponse().getContentType()).contains("application/problem+json");
         }
         for (var json : List.of(MALFORMED_JSON, NOT_JSON, "[]", "{\"refreshToken\":{\"a\":1}}")) {
-            assertThat(mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content(json))
+            assertThat(mockMvc.perform(post("/api/v1/auth/refresh")
+                    .contentType(MediaType.APPLICATION_JSON).content(json))
                     .andReturn().getResponse().getStatus()).as(json).isEqualTo(400);
         }
-        assertThat(refresh("x".repeat(256)).getResponse().getStatus()).as("maior que a coluna").isEqualTo(400);
-        assertThat(mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON))
+        assertThat(refresh("x".repeat(256)).getResponse().getStatus()).as("maior que a coluna")
+                .isEqualTo(400);
+        assertThat(mockMvc.perform(post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON))
                 .andReturn().getResponse().getStatus()).as("sem body").isEqualTo(400);
     }
 
     @Test
-    @DisplayName("Refresh: limite de 255 chars -> 401 (aceito, inexistente); 256 -> 400 com errors referenciando refreshToken")
+    @DisplayName("Refresh: limite de 255 chars -> 401 (aceito, inexistente); 256 -> 400 com "
+            + "errors referenciando refreshToken")
     void refreshTokenLengthBoundary() throws Exception {
         assertProblem(refresh("x".repeat(255)), 401, "Não Autorizado", "unauthorized");
         var r = refresh("x".repeat(256));
         assertProblem(r, 400, "Requisição Inválida", "bad-request");
-        assertThat(objectMapper.readTree(r.getResponse().getContentAsString(StandardCharsets.UTF_8)).get("errors").asText())
+        assertThat(objectMapper.readTree(r.getResponse().getContentAsString(StandardCharsets.UTF_8))
+                .get("errors").asText())
                 .startsWith("refreshToken:");
     }
 
-    private void assertProblem(MvcResult r, int status, String title, String typeSlug) throws Exception {
+    private void assertProblem(MvcResult r, int status, String title,
+            String typeSlug) throws Exception {
         var raw = r.getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(r.getResponse().getStatus()).as(raw).isEqualTo(status);
         assertThat(r.getResponse().getContentType()).contains("application/problem+json");
@@ -432,13 +479,15 @@ class AuthControllerIT extends AbstractPostgresIT {
         assertThat(j.get("title").asText()).isEqualTo(title);
         assertThat(j.get("type").asText()).isEqualTo("https://autofolio.com/errors/" + typeSlug);
         assertThat(j.get("timestamp").asText()).isNotBlank();
-        assertThat(raw.split("\"timestamp\"", -1).length - 1).as("timestamp duplicado: " + raw).isEqualTo(1);
+        assertThat(raw.split("\"timestamp\"", -1).length - 1).as("timestamp duplicado: " + raw)
+                .isEqualTo(1);
     }
 
     @Test
     @DisplayName("Handler: 415, 405, 404 e 406 em problem+json padronizado")
     void springMvcErrorsArePadronized() throws Exception {
-        assertProblem(mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.TEXT_PLAIN).content("x")).andReturn(),
+        assertProblem(mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.TEXT_PLAIN)
+                .content("x")).andReturn(),
                 415, "Tipo de Mídia Não Suportado", "unsupported-media-type");
         assertProblem(mockMvc.perform(get("/api/v1/auth/refresh")).andReturn(),
                 405, "Método Não Permitido", "method-not-allowed");
@@ -447,42 +496,52 @@ class AuthControllerIT extends AbstractPostgresIT {
         register();
         var rt = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
         assertProblem(mockMvc.perform(post("/api/v1/auth/refresh").accept(MediaType.APPLICATION_XML)
-                .contentType(MediaType.APPLICATION_JSON).content("{\"refreshToken\":\"" + rt + "\"}")).andReturn(),
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + rt + "\"}")).andReturn(),
                 406, "Formato Não Aceito", "not-acceptable");
         var at = body(login(EMAIL, PASSWORD)).get("accessToken").asText();
-        assertProblem(mockMvc.perform(get("/api/v1/rota-inexistente").header("Authorization", "Bearer " + at)).andReturn(),
+        assertProblem(mockMvc.perform(get("/api/v1/rota-inexistente")
+                .header("Authorization", "Bearer " + at)).andReturn(),
                 404, "Recurso Não Encontrado", "not-found");
     }
 
     @Test
     @DisplayName("Handler: formato dos 400, 409, 401s e Bearer malformado")
     void errorShapesArePadronized() throws Exception {
-        var v = mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content("{}")).andReturn();
+        var v = mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON).content("{}")).andReturn();
         assertProblem(v, 400, "Requisição Inválida", "bad-request");
         assertThat(body(v).get("detail").asText()).isEqualTo("Falha na validação dos campos.");
         assertThat(body(v).get("errors").asText()).contains("email:");
         register();
-        var c = mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new RegisterRequest("Xxxx", EMAIL, "outro-slug", PASSWORD)))).andReturn();
+        var c = mockMvc.perform(post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RegisterRequest("Xxxx", EMAIL,
+                "outro-slug", PASSWORD)))).andReturn();
         assertProblem(c, 409, "Conflito de Dados", "conflict");
         assertProblem(login(EMAIL, "errada123"), 401, "Não Autorizado", "unauthorized");
         assertProblem(refresh("nao-existe"), 401, "Não Autorizado", "unauthorized");
-        var rs = mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer lixo")).andReturn();
+        var rs = mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer lixo"))
+                .andReturn();
         assertProblem(rs, 401, "Não Autorizado", "unauthorized");
         assertThat(rs.getResponse().getHeader("WWW-Authenticate")).startsWith("Bearer");
-        var bad = mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer a b c")).andReturn();
-        // O resolver padrão trata header malformado como invalid_token (401); invalid_request (400) não é alcançável aqui
+        var bad = mockMvc.perform(get("/api/v1/vehicles").header("Authorization", "Bearer a b c"))
+                .andReturn();
+        // O resolver padrão trata header malformado como invalid_token (401);
+        // invalid_request (400) não é alcançável aqui
         assertProblem(bad, 401, "Não Autorizado", "unauthorized");
         assertThat(bad.getResponse().getHeader("WWW-Authenticate")).contains("invalid_token");
     }
 
     @Test
-    @DisplayName("Refresh: Bearer inválido na rota é ignorado; token com espaços ou case alterado não existe")
+    @DisplayName("Refresh: Bearer inválido na rota é ignorado; token com espaços ou case alterado "
+            + "não existe")
     void refreshIgnoresBearerAndMatchesExactly() throws Exception {
         register();
         var rt = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
         var r = mockMvc.perform(post("/api/v1/auth/refresh").header("Authorization", "Bearer lixo")
-                .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(new RefreshRequest(rt)))).andReturn();
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RefreshRequest(rt)))).andReturn();
         assertThat(r.getResponse().getStatus()).isEqualTo(200);
         assertThat(refresh(rt.toUpperCase()).getResponse().getStatus()).isEqualTo(401);
         assertThat(refresh(" " + rt).getResponse().getStatus()).isEqualTo(401);
@@ -495,15 +554,18 @@ class AuthControllerIT extends AbstractPostgresIT {
         register();
         var rt = body(login(EMAIL, PASSWORD)).get("refreshToken").asText();
         var ok = body(refresh(rt));
-        assertThat(ok.fieldNames()).toIterable().containsExactlyInAnyOrder("accessToken", "expiresIn");
+        assertThat(ok.fieldNames()).toIterable()
+                .containsExactlyInAnyOrder("accessToken", "expiresIn");
         var err = refresh("nao-existe").getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(err).doesNotContain("Exception", "SQL", "com.autofolio", "nao-existe");
     }
 
     @ParameterizedTest
     @NullSource
-    @ValueSource(strings = {"Bearer lixo", "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.assinaturaerrada"})
-    @DisplayName("Resource server: 401 com WWW-Authenticate e ProblemDetail (sem token, inválido, assinatura errada)")
+    @ValueSource(strings = {"Bearer lixo",
+            "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.assinaturaerrada"})
+    @DisplayName("Resource server: 401 com WWW-Authenticate e ProblemDetail (sem token, inválido, "
+            + "assinatura errada)")
     void resourceServer401(String authorization) throws Exception {
         var request = get("/api/v1/vehicles");
         if (authorization != null) {
@@ -532,14 +594,19 @@ class AuthControllerIT extends AbstractPostgresIT {
         assertThat(result.getResponse().getStatus()).isEqualTo(202);
         assertThat(result.getResponse().getContentAsString()).isEmpty();
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
-                assertThat(jdbc.queryForObject("SELECT count(*) FROM password_reset_tokens", Integer.class)).isEqualTo(1));
-        var row = jdbc.queryForMap("SELECT token_hash, used, expires_at FROM password_reset_tokens");
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM password_reset_tokens",
+                Integer.class)).isEqualTo(1));
+        var row = jdbc.queryForMap("SELECT token_hash, used, expires_at "
+                + "FROM password_reset_tokens");
         assertThat(row.get("used")).isEqualTo(false);
         var expiresAt = ((Timestamp) row.get("expires_at")).toInstant();
-        assertThat(Duration.between(Instant.now(), expiresAt)).isBetween(Duration.ofMinutes(58), Duration.ofMinutes(61));
+        assertThat(Duration.between(Instant.now(), expiresAt))
+                .isBetween(Duration.ofMinutes(58), Duration.ofMinutes(61));
         var rawToken = ArgumentCaptor.forClass(String.class);
-        verify(mailer, timeout(5000)).send(eq(EMAIL), eq("Vendedor Teste"), rawToken.capture(), any());
-        assertThat(row.get("token_hash")).isEqualTo(TokenHasher.sha256Hex(rawToken.getValue())).isNotEqualTo(rawToken.getValue());
+        verify(mailer, timeout(5000))
+                .send(eq(EMAIL), eq("Vendedor Teste"), rawToken.capture(), any());
+        assertThat(row.get("token_hash")).isEqualTo(TokenHasher.sha256Hex(rawToken.getValue()))
+                .isNotEqualTo(rawToken.getValue());
     }
 
     @Test
@@ -550,7 +617,8 @@ class AuthControllerIT extends AbstractPostgresIT {
         assertThat(result.getResponse().getStatus()).isEqualTo(202);
         assertThat(result.getResponse().getContentAsString()).isEmpty();
         verify(mailer, after(500).never()).send(anyString(), anyString(), anyString(), any());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM password_reset_tokens", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM password_reset_tokens", Integer.class))
+                .isZero();
     }
 
     @Test
