@@ -13,17 +13,14 @@ spring:
     properties:
       hibernate:
         format_sql: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
 
   # Database Migrations
   flyway:
     enabled: true
     baseline-on-migrate: true
 
-  # Local Mail (e.g., Mailtrap or Local Docker SMTP)
+  # Local Mail: host/porta/timeouts vêm do application.yml; SMTP local sem TLS
   mail:
-    host: localhost
-    port: 1025
     properties:
       mail:
         smtp:

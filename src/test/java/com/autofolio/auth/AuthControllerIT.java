@@ -1,5 +1,7 @@
 package com.autofolio.auth;
 
+import com.autofolio.AbstractPostgresIT;
+import com.autofolio.auth.dto.ForgotPasswordRequest;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.RefreshRequest;
 import com.autofolio.auth.dto.RegisterRequest;
@@ -16,21 +18,19 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.mail.MailSendException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -46,6 +46,16 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.verify;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -54,20 +64,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
-@Testcontainers
 @Tag("integration")
 @DisplayName("Testes de Integração - AuthController (Postgres via Testcontainers)")
-class AuthControllerIT {
-
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
-
-    @DynamicPropertySource
-    static void datasource(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-    }
+class AuthControllerIT extends AbstractPostgresIT {
 
     private static final String EMAIL = "vendedor@teste.com";
     private static final String PASSWORD = "password123";
@@ -90,8 +89,14 @@ class AuthControllerIT {
     @Autowired
     private JwtDecoder jwtDecoder;
 
+    // Nenhum e-mail real é enviado nos testes
+    @MockBean
+    private PasswordResetMailer mailer;
+
     @BeforeEach
     void setUp() {
+        reset(mailer);
+        jdbc.update("DELETE FROM password_reset_tokens");
         jdbc.update("DELETE FROM refresh_tokens");
         jdbc.update("DELETE FROM user_profiles");
         jdbc.update("DELETE FROM users");
@@ -366,21 +371,23 @@ class AuthControllerIT {
             var rt = UUID.randomUUID().toString();
             jdbc.update("INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (?, ?, now() - interval '1 minute')", userId, rt);
             var go = new CountDownLatch(1);
-            ExecutorService pool = Executors.newFixedThreadPool(4);
-            try {
-                List<Future<Integer>> futures = new ArrayList<>();
-                for (int i = 0; i < 4; i++) {
-                    futures.add(pool.submit(() -> {
-                        go.await();
-                        return refresh(rt).getResponse().getStatus();
-                    }));
+            try (ExecutorService pool = Executors.newFixedThreadPool(4)) {
+                try {
+                    List<Future<Integer>> futures = new ArrayList<>();
+                    for (int i = 0; i < 4; i++) {
+                        futures.add(pool.submit(() -> {
+                            go.await();
+                            return refresh(rt).getResponse().getStatus();
+                        }));
+                    }
+                    go.countDown();
+                    for (var future : futures) {
+                        assertThat(future.get(10, TimeUnit.SECONDS)).isEqualTo(401);
+                    }
+                } finally {
+                    // Se o get estourar o timeout, close() esperaria as threads travadas para sempre
+                    pool.shutdownNow();
                 }
-                go.countDown();
-                for (var future : futures) {
-                    assertThat(future.get(10, TimeUnit.SECONDS)).isEqualTo(401);
-                }
-            } finally {
-                pool.shutdownNow();
             }
             assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE token = ?", Integer.class, rt)).isZero();
         }
@@ -503,5 +510,61 @@ class AuthControllerIT {
 
         assertProblem(result, 401, "Não Autorizado", "unauthorized");
         assertThat(result.getResponse().getHeader("WWW-Authenticate")).startsWith("Bearer");
+    }
+
+    private MvcResult forgotPassword(String email) throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ForgotPasswordRequest(email))))
+                .andReturn();
+    }
+
+    @Test
+    @DisplayName("Forgot-password: e-mail existente grava token (1h, used=false) e envia o e-mail")
+    void forgotPasswordExistingEmail() throws Exception {
+        register();
+
+        var result = forgotPassword(EMAIL);
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(202);
+        assertThat(result.getResponse().getContentAsString()).isEmpty();
+        await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM password_reset_tokens", Integer.class)).isEqualTo(1));
+        var row = jdbc.queryForMap("SELECT token, used, expires_at FROM password_reset_tokens");
+        assertThat(row.get("used")).isEqualTo(false);
+        var expiresAt = ((Timestamp) row.get("expires_at")).toInstant();
+        assertThat(Duration.between(Instant.now(), expiresAt)).isBetween(Duration.ofMinutes(58), Duration.ofMinutes(61));
+        verify(mailer, timeout(5000)).send(eq(EMAIL), eq("Vendedor Teste"), eq((String) row.get("token")), any());
+    }
+
+    @Test
+    @DisplayName("Forgot-password: e-mail inexistente também retorna 202, sem token nem e-mail")
+    void forgotPasswordUnknownEmail() throws Exception {
+        var result = forgotPassword("naoexiste@teste.com");
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(202);
+        assertThat(result.getResponse().getContentAsString()).isEmpty();
+        verify(mailer, after(500).never()).send(anyString(), anyString(), anyString(), any());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM password_reset_tokens", Integer.class)).isZero();
+    }
+
+    @Test
+    @DisplayName("Forgot-password: falha de SMTP não vira 500")
+    void forgotPasswordSmtpFailure() throws Exception {
+        register();
+        doThrow(new MailSendException("smtp down"))
+                .when(mailer).send(anyString(), anyString(), anyString(), any());
+
+        var result = forgotPassword(EMAIL);
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(202);
+        verify(mailer, timeout(5000)).send(anyString(), anyString(), anyString(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "nao-e-email"})
+    @DisplayName("Forgot-password: e-mail em branco ou malformado retorna 400")
+    void forgotPasswordInvalidEmail(String email) throws Exception {
+        assertThat(forgotPassword(email).getResponse().getStatus()).isEqualTo(400);
     }
 }

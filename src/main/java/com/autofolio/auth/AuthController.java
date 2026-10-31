@@ -1,6 +1,7 @@
 package com.autofolio.auth;
 
 import com.autofolio.auth.dto.AuthResponse;
+import com.autofolio.auth.dto.ForgotPasswordRequest;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.LoginResponse;
 import com.autofolio.auth.dto.RefreshRequest;
@@ -61,5 +62,17 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<RefreshResponse> refresh(@Valid @RequestBody RefreshRequest request) {
         return ResponseEntity.ok(authService.refresh(request));
+    }
+
+    /**
+     * Solicita o e-mail de redefinição de senha.
+     */
+    @Operation(summary = "Recuperação de senha", description = "Se o e-mail estiver cadastrado, envia um link de redefinição válido por 1 hora. Responde sempre 202, exista o e-mail ou não.")
+    @ApiResponse(responseCode = "202", description = "Solicitação aceita (independe de o e-mail existir)")
+    @ApiResponse(responseCode = "400", description = "E-mail ausente ou malformado")
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.forgotPassword(request);
+        return ResponseEntity.accepted().build();
     }
 }

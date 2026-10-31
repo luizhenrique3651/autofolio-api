@@ -2,6 +2,7 @@ package com.autofolio.auth;
 
 import com.autofolio.auth.domain.User;
 import com.autofolio.auth.domain.UserProfile;
+import com.autofolio.auth.dto.ForgotPasswordRequest;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.RefreshRequest;
 import com.autofolio.auth.dto.AccessTokenGrant;
@@ -23,9 +24,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -43,6 +41,9 @@ class AuthServiceTest {
 
     @Mock
     private TokenService tokenService;
+
+    @Mock
+    private PasswordResetService passwordResetService;
 
     @InjectMocks
     private AuthService authService;
@@ -156,5 +157,13 @@ class AuthServiceTest {
 
         assertThat(response.accessToken()).isEqualTo("novo");
         assertThat(response.expiresIn()).isEqualTo(3600);
+    }
+
+    @Test
+    @DisplayName("Deve delegar a recuperação de senha ao PasswordResetService")
+    void shouldDelegateForgotPassword() {
+        authService.forgotPassword(new ForgotPasswordRequest("a@b.com"));
+
+        verify(passwordResetService).requestReset("a@b.com");
     }
 }

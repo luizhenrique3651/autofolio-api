@@ -3,6 +3,7 @@ package com.autofolio.auth;
 import com.autofolio.auth.domain.User;
 import com.autofolio.auth.domain.UserProfile;
 import com.autofolio.auth.dto.AuthResponse;
+import com.autofolio.auth.dto.ForgotPasswordRequest;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.LoginResponse;
 import com.autofolio.auth.dto.RefreshRequest;
@@ -31,6 +32,7 @@ public class AuthService {
     private final UserProfileRepository userProfileRepository;
     private final PasswordEncoder passwordEncoder;
     private final TokenService tokenService;
+    private final PasswordResetService passwordResetService;
 
     /**
      * Registra um novo vendedor no sistema.
@@ -99,5 +101,12 @@ public class AuthService {
     public RefreshResponse refresh(RefreshRequest request) {
         var grant = tokenService.refresh(request.refreshToken());
         return new RefreshResponse(grant.accessToken(), grant.expiresIn());
+    }
+
+    /**
+     * Dispara a recuperação de senha em segundo plano; retorna sempre, sem revelar se o e-mail existe.
+     */
+    public void forgotPassword(ForgotPasswordRequest request) {
+        passwordResetService.requestReset(request.email());
     }
 }

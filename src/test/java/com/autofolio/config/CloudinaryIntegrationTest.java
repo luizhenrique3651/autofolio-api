@@ -1,5 +1,6 @@
 package com.autofolio.config;
 
+import com.autofolio.auth.repository.PasswordResetTokenRepository;
 import com.autofolio.auth.repository.RefreshTokenRepository;
 import com.autofolio.auth.repository.UserProfileRepository;
 import com.autofolio.auth.repository.UserRepository;
@@ -25,31 +26,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 })
 @ActiveProfiles("dev")
 @Tag("integration")
+@MockBean({UserRepository.class, UserProfileRepository.class, RefreshTokenRepository.class,
+        PasswordResetTokenRepository.class})
 public class CloudinaryIntegrationTest {
 
     @Autowired
     private Cloudinary cloudinary;
-
-    @MockBean
-    private UserRepository userRepository;
-
-    @MockBean
-    private UserProfileRepository userProfileRepository;
-
-    @MockBean
-    private RefreshTokenRepository refreshTokenRepository;
 
     @Test
     @DisplayName("Deve realizar upload de uma imagem real para validar a integração com Cloudinary")
     void shouldUploadImageSuccessfullyWhenCloudinaryIsConfigured() throws IOException {
         String fordLogoUrl = "https://upload.wikimedia.org/wikipedia/commons/a/a0/Ford_Motor_Company_Logo.svg";
 
-        Map<String, Object> options = ObjectUtils.asMap(
+        Map<?, ?> options = ObjectUtils.asMap(
             "folder", "autofolio_tests",
             "public_id", "ford_logo_test_" + System.currentTimeMillis()
         );
 
-        Map uploadResult = cloudinary.uploader().upload(fordLogoUrl, options);
+        Map<?, ?> uploadResult = cloudinary.uploader().upload(fordLogoUrl, options);
 
         assertThat(uploadResult).isNotNull();
         assertThat(uploadResult.get("public_id")).isNotNull();
