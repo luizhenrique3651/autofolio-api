@@ -56,6 +56,7 @@ class AuthServiceTest {
                 .email(request.email())
                 .name(request.name())
                 .slug(request.slug())
+                .password("hashedPassword")
                 .build();
 
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
@@ -108,7 +109,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("Deve autenticar com credenciais válidas e retornar os tokens")
     void shouldLoginSuccessfully() {
-        var user = User.builder().email("luiz@example.com").password("hash").build();
+        var user = User.builder().name("Luiz").email("luiz@example.com").password("hash").slug("luiz-dev").build();
         var tokens = new TokenPair("access", "refresh", 3600);
         when(userRepository.findByEmail("luiz@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("password123", "hash")).thenReturn(true);
@@ -137,7 +138,7 @@ class AuthServiceTest {
     @Test
     @DisplayName("Deve lançar InvalidCredentialsException quando a senha está errada")
     void shouldFailLoginWhenPasswordWrong() {
-        var user = User.builder().email("luiz@example.com").password("hash").build();
+        var user = User.builder().name("Luiz").email("luiz@example.com").password("hash").slug("luiz-dev").build();
         when(userRepository.findByEmail("luiz@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
 
@@ -165,5 +166,13 @@ class AuthServiceTest {
         authService.forgotPassword(new ForgotPasswordRequest("a@b.com"));
 
         verify(passwordResetService).requestReset("a@b.com");
+    }
+
+    @Test
+    @DisplayName("Deve delegar a redefinição de senha ao PasswordResetService")
+    void shouldDelegateResetPassword() {
+        authService.resetPassword(new com.autofolio.auth.dto.ResetPasswordRequest("tok", "Senha1234"));
+
+        verify(passwordResetService).resetPassword("tok", "Senha1234");
     }
 }

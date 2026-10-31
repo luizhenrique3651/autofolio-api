@@ -9,6 +9,7 @@ import com.autofolio.auth.dto.LoginResponse;
 import com.autofolio.auth.dto.RefreshRequest;
 import com.autofolio.auth.dto.RefreshResponse;
 import com.autofolio.auth.dto.RegisterRequest;
+import com.autofolio.auth.dto.ResetPasswordRequest;
 import com.autofolio.auth.repository.UserProfileRepository;
 import com.autofolio.auth.repository.UserRepository;
 import com.autofolio.shared.exception.DataConflictException;
@@ -108,5 +109,12 @@ public class AuthService {
      */
     public void forgotPassword(ForgotPasswordRequest request) {
         passwordResetService.requestReset(request.email());
+    }
+
+    /**
+     * Redefine a senha a partir do token recebido por e-mail.
+     */
+    public void resetPassword(ResetPasswordRequest request) {
+        passwordResetService.resetPassword(request.token(), request.newPassword());
     }
 }

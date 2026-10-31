@@ -24,6 +24,10 @@ spring:
           starttls:
             enable: true
 
+# Frontend: exige a variável (sem o default de dev), senão CORS e link do e-mail apontariam para localhost
+frontend:
+  url: ${FRONTEND_URL}
+
 # External Integrations (Cloudinary)
 cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME}
@@ -35,5 +39,3 @@ logging:
   level:
     root: INFO
     com.autofolio: INFO
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

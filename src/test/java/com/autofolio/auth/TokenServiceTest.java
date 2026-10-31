@@ -44,7 +44,7 @@ class TokenServiceTest {
     @Test
     @DisplayName("Deve emitir JWT HS256 com claims corretas e persistir refresh token de 30 dias")
     void shouldIssueTokens() {
-        var user = User.builder().id(UUID.randomUUID()).slug("luiz-dev").build();
+        var user = user();
 
         var tokens = tokenService.issueTokens(user);
 
@@ -69,7 +69,7 @@ class TokenServiceTest {
     @Test
     @DisplayName("Refresh: token válido gera novo access token e não rotaciona nem altera o refresh")
     void shouldRefresh() {
-        var user = User.builder().id(UUID.randomUUID()).slug("luiz-dev").build();
+        var user = user();
         storedToken(user, clock.instant().plusSeconds(60), false);
 
         var response = tokenService.refresh("rt");
@@ -93,7 +93,7 @@ class TokenServiceTest {
     @Test
     @DisplayName("Refresh: token revogado lança exceção e não é removido")
     void shouldRejectRevoked() {
-        storedToken(User.builder().id(UUID.randomUUID()).build(), clock.instant().plusSeconds(60), true);
+        storedToken(user(), clock.instant().plusSeconds(60), true);
 
         assertThatThrownBy(() -> tokenService.refresh("rt")).isInstanceOf(InvalidRefreshTokenException.class);
         verify(repository, never()).deleteTokenById(any());
@@ -102,7 +102,7 @@ class TokenServiceTest {
     @Test
     @DisplayName("Refresh: token expirado lança exceção e é removido")
     void shouldRejectAndDeleteExpired() {
-        var rt = storedToken(User.builder().id(UUID.randomUUID()).build(), clock.instant().minusSeconds(1), false);
+        var rt = storedToken(user(), clock.instant().minusSeconds(1), false);
 
         assertThatThrownBy(() -> tokenService.refresh("rt")).isInstanceOf(InvalidRefreshTokenException.class);
         verify(repository).deleteTokenById(rt.getId());
@@ -111,10 +111,15 @@ class TokenServiceTest {
     @Test
     @DisplayName("Refresh: token que expira exatamente agora é considerado expirado")
     void shouldTreatBoundaryAsExpired() {
-        var rt = storedToken(User.builder().id(UUID.randomUUID()).build(), clock.instant(), false);
+        var rt = storedToken(user(), clock.instant(), false);
 
         assertThatThrownBy(() -> tokenService.refresh("rt")).isInstanceOf(InvalidRefreshTokenException.class);
         verify(repository).deleteTokenById(rt.getId());
+    }
+
+    private static User user() {
+        return User.builder().id(UUID.randomUUID()).name("Luiz").email("luiz@example.com")
+                .password("hash").slug("luiz-dev").build();
     }
 
     private RefreshToken storedToken(User user, Instant expiresAt, boolean revoked) {

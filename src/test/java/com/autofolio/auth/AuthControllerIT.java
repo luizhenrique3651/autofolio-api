@@ -5,10 +5,12 @@ import com.autofolio.auth.dto.ForgotPasswordRequest;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.RefreshRequest;
 import com.autofolio.auth.dto.RegisterRequest;
+import com.autofolio.shared.security.TokenHasher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -69,7 +71,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuthControllerIT extends AbstractPostgresIT {
 
     private static final String EMAIL = "vendedor@teste.com";
-    private static final String PASSWORD = "password123";
+    private static final String PASSWORD = "Password123";
     private static final String SLUG = "vendedor-teste";
 
     // language=TEXT
@@ -343,6 +345,7 @@ class AuthControllerIT extends AbstractPostgresIT {
             assertThat(r.getResponse().getContentType()).contains("application/problem+json");
             var j = (ObjectNode) body(r);
             j.remove("timestamp");
+            j.remove("requestId"); // único por requisição, de propósito
             normalized.add(j.toString());
         }
         assertThat(normalized).hasSize(1);
@@ -530,11 +533,13 @@ class AuthControllerIT extends AbstractPostgresIT {
         assertThat(result.getResponse().getContentAsString()).isEmpty();
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                 assertThat(jdbc.queryForObject("SELECT count(*) FROM password_reset_tokens", Integer.class)).isEqualTo(1));
-        var row = jdbc.queryForMap("SELECT token, used, expires_at FROM password_reset_tokens");
+        var row = jdbc.queryForMap("SELECT token_hash, used, expires_at FROM password_reset_tokens");
         assertThat(row.get("used")).isEqualTo(false);
         var expiresAt = ((Timestamp) row.get("expires_at")).toInstant();
         assertThat(Duration.between(Instant.now(), expiresAt)).isBetween(Duration.ofMinutes(58), Duration.ofMinutes(61));
-        verify(mailer, timeout(5000)).send(eq(EMAIL), eq("Vendedor Teste"), eq((String) row.get("token")), any());
+        var rawToken = ArgumentCaptor.forClass(String.class);
+        verify(mailer, timeout(5000)).send(eq(EMAIL), eq("Vendedor Teste"), rawToken.capture(), any());
+        assertThat(row.get("token_hash")).isEqualTo(TokenHasher.sha256Hex(rawToken.getValue())).isNotEqualTo(rawToken.getValue());
     }
 
     @Test

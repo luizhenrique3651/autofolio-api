@@ -1,5 +1,6 @@
 package com.autofolio.auth.dto;
 
+import com.autofolio.shared.validation.StrongPassword;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -22,7 +23,7 @@ public record RegisterRequest(
     String slug,
 
     @NotBlank(message = "A senha é obrigatória.")
-    @Size(min = 8, message = "A senha deve ter no mínimo 8 caracteres.")
+    @StrongPassword
     String password
 ) {
 }
