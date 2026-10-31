@@ -40,3 +40,9 @@ buildNumber.properties
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Secrets
+.env
+
+### Documentação interna ###
+doc/
