@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Teste de integração que faz upload real no Cloudinary (depende de rede externa).
@@ -30,7 +31,7 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("dev")
 @Tag("integration")
 @MockBean({UserRepository.class, UserProfileRepository.class, RefreshTokenRepository.class,
-        PasswordResetTokenRepository.class})
+        PasswordResetTokenRepository.class, TransactionTemplate.class})
 public class CloudinaryIntegrationTest {
 
     @Autowired

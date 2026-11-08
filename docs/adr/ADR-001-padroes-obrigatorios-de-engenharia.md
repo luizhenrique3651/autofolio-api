@@ -168,3 +168,7 @@ A Opção C troca um pequeno custo de manutenção por previsibilidade. Em tasks
 12. [ ] Rate limit no forgot-password e limites do executor `@Async` (hardening).
 13. [ ] Padronizar a configuração tipada: migrar `JwtConfig` e `CloudinaryConfig` de `@Value` para `@ConfigurationProperties` com validação de obrigatoriedade e valor em branco, como já faz o `FrontendProperties`.
 14. [ ] Fixar a versão do Java no build (`maven-enforcer-plugin` com `requireJavaVersion [21,22)`). O Maven do Homebrew passou a rodar em Java 26, e o Byte Buddy do Mockito não o suporta, o que quebra os testes com `@MockBean`.
+15. [ ] **Obrigatório antes da AF-016:** centralizar a checagem de conta ativa (`active=true`) num único ponto da autenticação (`JwtAuthenticationConverter` ou validator no `SecurityConfig`), em vez de cada service; o portfólio público deve filtrar `active=true`.
+16. [ ] Rate limit nos endpoints que confirmam senha (`DELETE /users/me`, `PATCH /users/me/password`), junto com o do login.
+17. [ ] Endpoint de reativação de conta e anonimização LGPD (Sprint 4, clientes/LGPD).
+18. [ ] Configurar `-Xlint:all` (e `showWarnings`) nos `compilerArgs` do `maven-compiler-plugin`, para que a §7.2 seja verificada no build e não só pelo revisor de warnings.

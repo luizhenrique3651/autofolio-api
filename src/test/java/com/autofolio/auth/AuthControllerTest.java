@@ -73,6 +73,19 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("Register: 400 (e não 500) para slug de 256 caracteres")
+    void shouldRejectTooLongSlugOnRegister() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Luiz Teste\",\"email\":\"a@b.com\","
+                                + "\"slug\":\"" + "a".repeat(256) + "\","
+                                + "\"password\":\"SenhaForte1\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors").exists());
+        verifyNoInteractions(authService);
+    }
+
+    @Test
     @DisplayName("Deve retornar 401 com mensagem genérica em credenciais inválidas")
     void shouldReturn401() throws Exception {
         when(authService.login(any())).thenThrow(new InvalidCredentialsException());

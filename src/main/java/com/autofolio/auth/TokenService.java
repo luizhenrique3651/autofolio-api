@@ -13,6 +13,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -25,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Emite o par de tokens (JWT de acesso + refresh token opaco persistido) no login e no cadastro,
  * e renova o access token a partir de um refresh token válido.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TokenService {
@@ -69,11 +71,25 @@ public class TokenService {
             refreshTokenRepository.deleteTokenById(refreshToken.getId());
             throw new InvalidRefreshTokenException();
         }
-        if (refreshToken.isRevoked()) {
+        // Conta desativada recebe o mesmo 401 de refresh token revogado
+        if (!refreshToken.getUser().isActive()) {
+            log.warn("Refresh recusado: conta desativada (userId={})",
+                    refreshToken.getUser().getId());
+        }
+        if (refreshToken.isRevoked() || !refreshToken.getUser().isActive()) {
             throw new InvalidRefreshTokenException();
         }
 
         return new AccessTokenGrant(encodeAccessToken(refreshToken.getUser(), now),
+                ACCESS_TOKEN_TTL.toSeconds());
+    }
+
+    /**
+     * Emite apenas um novo access token (sem criar refresh token), por exemplo após a troca de
+     * slug, que é um claim do JWT.
+     */
+    public AccessTokenGrant issueAccessToken(User user) {
+        return new AccessTokenGrant(encodeAccessToken(user, clock.instant()),
                 ACCESS_TOKEN_TTL.toSeconds());
     }
 

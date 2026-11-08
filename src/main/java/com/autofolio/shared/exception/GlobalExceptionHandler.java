@@ -52,6 +52,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Converte sessão de usuário inexistente ou desativado em 401.
+     */
+    @ExceptionHandler(InvalidSessionException.class)
+    public ProblemDetail handleInvalidSessionException(InvalidSessionException ex) {
+        return ProblemDetails.unauthorized(ex.getMessage());
+    }
+
+    /**
      * Converte token de redefinição inválido em 400.
      */
     @ExceptionHandler(InvalidResetTokenException.class)

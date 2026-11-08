@@ -1,5 +1,6 @@
 package com.autofolio.config;
 
+import com.autofolio.shared.exception.InvalidSessionException;
 import com.autofolio.shared.exception.ProblemDetails;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,7 +45,7 @@ public class ProblemDetailAuthenticationEntryPoint implements AuthenticationEntr
                 : HttpStatus.UNAUTHORIZED;
         var problemDetail = status == HttpStatus.BAD_REQUEST
                 ? ProblemDetails.badRequest("Requisição de autenticação inválida.")
-                : ProblemDetails.unauthorized("Autenticação necessária ou token inválido.");
+                : ProblemDetails.unauthorized(InvalidSessionException.MESSAGE);
 
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");

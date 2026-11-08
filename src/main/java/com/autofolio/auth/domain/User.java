@@ -44,6 +44,10 @@ public class User {
     @Column(nullable = false, unique = true)
     private String slug;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean active = true;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;

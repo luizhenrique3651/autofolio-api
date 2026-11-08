@@ -23,15 +23,18 @@ import com.autofolio.auth.repository.UserRepository;
 import com.autofolio.shared.exception.DataConflictException;
 import com.autofolio.shared.exception.InvalidCredentialsException;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 @DisplayName("Testes Unitários - AuthService")
 class AuthServiceTest {
 
@@ -140,6 +143,25 @@ class AuthServiceTest {
 
         verify(passwordEncoder).matches(eq("password123"), anyString());
         verify(tokenService, never()).issueTokens(any());
+    }
+
+    @Test
+    @DisplayName("Deve lançar InvalidCredentialsException para conta desativada, mesmo com a "
+            + "senha certa, gastando o BCrypt")
+    void shouldRejectInactiveUserOnLogin(CapturedOutput output) {
+        var user = User.builder().name("Luiz").slug("luiz-dev").email("luiz@example.com")
+                .id(UUID.randomUUID()).password("hash").active(false)
+                .build();
+        when(userRepository.findByEmail("luiz@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("password123", "hash")).thenReturn(true);
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("luiz@example.com",
+                "password123"))).isInstanceOf(InvalidCredentialsException.class);
+
+        verify(passwordEncoder).matches("password123", "hash");
+        verify(tokenService, never()).issueTokens(any());
+        assertThat(output.getOut()).contains("Login recusado: conta desativada (userId=")
+                .doesNotContain("luiz@example.com").doesNotContain("password123");
     }
 
     @Test
