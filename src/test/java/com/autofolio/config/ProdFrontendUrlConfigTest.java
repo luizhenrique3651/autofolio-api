@@ -23,6 +23,11 @@ class ProdFrontendUrlConfigTest {
     private StandardEnvironment environment(String profileFile, Map<String,
             Object> variables) throws IOException {
         var env = new StandardEnvironment();
+        // Só os ymls e o mapa do teste contam: System properties (o dotenv do AutoFolioApplication
+        // grava FRONTEND_URL nelas) e variáveis do SO tornariam o resultado dependente de ordem
+        env.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        env.getPropertySources().remove(
+                StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
         var loader = new YamlPropertySourceLoader();
         env.getPropertySources().addFirst(new MapPropertySource("variaveis", variables));
         // Ordem de precedência real: variáveis > yml do perfil > application.yml
@@ -48,7 +53,8 @@ class ProdFrontendUrlConfigTest {
     @Test
     @DisplayName("prod com FRONTEND_URL usa o valor definido")
     void prodUsesFrontendUrl() throws IOException {
-        var env = environment("application-prod.yml", Map.of("FRONTEND_URL", "https://app.autofolio.com"));
+        var env = environment("application-prod.yml",
+                Map.of("FRONTEND_URL", "https://app.autofolio.com"));
 
         assertThat(env.getProperty("frontend.url")).isEqualTo("https://app.autofolio.com");
     }

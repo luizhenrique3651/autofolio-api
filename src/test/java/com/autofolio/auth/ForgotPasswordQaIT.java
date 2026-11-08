@@ -38,7 +38,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 /** QA AF-011: fluxo ponta a ponta com o PasswordResetMailer real e JavaMailSender mockado. */
-@SpringBootTest
+@SpringBootTest(properties = "app.mail.from=noreply@autofolio.com")
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
 @Tag("integration")

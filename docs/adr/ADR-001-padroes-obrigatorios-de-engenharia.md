@@ -77,6 +77,7 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
 3. **Testes nunca enviam e-mail nem chamam serviço externo real.** Exceção conhecida: `CloudinaryIntegrationTest`, a isolar.
 4. **Toda decisão de log e segurança tem teste:** formato do log sem dado pessoal, ramo de cada exceção, concorrência no consumo de tokens e `requestId` no corpo igual ao do header.
 5. **`mvn test` e `mvn test -Dtest='*IT'`** (todos juntos) passam antes de qualquer revisão.
+6. **Testes independentes de ordem e de ambiente.** A suíte inteira passa numa única JVM em ordem aleatória (`mvn test -Dtest='*Test,*IT' -Dsurefire.runOrder=random`), que é como a IDE roda. O bloco estático do `AutoFolioApplication` grava o `.env` como System properties para a JVM inteira. Por isso, teste que resolve configuração sem subir o contexto não pode usar as fontes `systemProperties`/`systemEnvironment`, nem depender de variável do SO.
 
 ### 7. Qualidade estática
 
@@ -166,3 +167,4 @@ A Opção C troca um pequeno custo de manutenção por previsibilidade. Em tasks
 11. [ ] Tipar o `Map` cru do `CloudinaryConfig`.
 12. [ ] Rate limit no forgot-password e limites do executor `@Async` (hardening).
 13. [ ] Padronizar a configuração tipada: migrar `JwtConfig` e `CloudinaryConfig` de `@Value` para `@ConfigurationProperties` com validação de obrigatoriedade e valor em branco, como já faz o `FrontendProperties`.
+14. [ ] Fixar a versão do Java no build (`maven-enforcer-plugin` com `requireJavaVersion [21,22)`). O Maven do Homebrew passou a rodar em Java 26, e o Byte Buddy do Mockito não o suporta, o que quebra os testes com `@MockBean`.
