@@ -24,12 +24,16 @@ import java.util.UUID;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
+@ExtendWith(OutputCaptureExtension.class)
 @DisplayName("Testes Unitários - TokenService")
 class TokenServiceTest {
 
@@ -101,6 +105,35 @@ class TokenServiceTest {
         assertThatThrownBy(() -> tokenService.refresh("rt"))
                 .isInstanceOf(InvalidRefreshTokenException.class);
         verify(repository, never()).deleteTokenById(any());
+    }
+
+    @Test
+    @DisplayName("Refresh: conta desativada lança a mesma exceção do token revogado")
+    void shouldRejectInactiveUser(CapturedOutput output) {
+        var user = user();
+        user.setActive(false);
+        storedToken(user, clock.instant().plusSeconds(60), false);
+
+        assertThatThrownBy(() -> tokenService.refresh("rt"))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+
+        assertThat(output.getOut()).contains("conta desativada (userId=" + user.getId() + ")")
+                .doesNotContain("luiz@example.com").doesNotContain("rt)");
+    }
+
+    @Test
+    @DisplayName("issueAccessToken: emite só o JWT, com o slug atual, sem criar refresh token")
+    void shouldIssueAccessTokenOnly() {
+        var user = user();
+        user.setSlug("novo-slug");
+
+        var grant = tokenService.issueAccessToken(user);
+
+        var jwt = decoderWithoutExpValidation().decode(grant.accessToken());
+        assertThat(jwt.getSubject()).isEqualTo(user.getId().toString());
+        assertThat(jwt.getClaimAsString("slug")).isEqualTo("novo-slug");
+        assertThat(grant.expiresIn()).isEqualTo(3600);
+        verify(repository, never()).save(any());
     }
 
     @Test

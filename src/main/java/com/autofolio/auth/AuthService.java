@@ -15,6 +15,7 @@ import com.autofolio.auth.repository.UserRepository;
 import com.autofolio.shared.exception.DataConflictException;
 import com.autofolio.shared.exception.InvalidCredentialsException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Serviço responsável por operações de autenticação e gerenciamento de usuários.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -90,7 +92,12 @@ public class AuthService {
             passwordEncoder.matches(request.password(), DUMMY_HASH);
             throw new InvalidCredentialsException();
         }
-        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+        boolean passwordMatches = passwordEncoder.matches(request.password(), user.getPassword());
+        // Conta desativada recebe o mesmo 401 e o mesmo custo de BCrypt (ADR-001 §2.4)
+        if (!user.isActive()) {
+            log.warn("Login recusado: conta desativada (userId={})", user.getId());
+        }
+        if (!passwordMatches || !user.isActive()) {
             throw new InvalidCredentialsException();
         }
 

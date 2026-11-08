@@ -1,9 +1,13 @@
 package com.autofolio.auth.repository;
 
 import com.autofolio.auth.domain.User;
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -22,7 +26,35 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     boolean existsBySlug(String slug);
 
     /**
+     * Indica se outro usuário (de id diferente) já usa o slug informado.
+     */
+    boolean existsBySlugAndIdNot(String slug, UUID id);
+
+    /**
      * Busca o usuário pelo e-mail.
      */
     Optional<User> findByEmail(String email);
+
+    /**
+     * Busca o usuário pelo id apenas se a conta estiver ativa.
+     */
+    Optional<User> findByIdAndActiveTrue(UUID id);
+
+    /**
+     * Atualiza o hash da senha de uma conta ativa sem sobrescrever os demais campos (a entidade
+     * lida fora de transação fica desatualizada). Devolve 0 se a conta foi desativada no meio.
+     */
+    @Modifying
+    @Query("update User u set u.password = :hash, u.updatedAt = :now "
+            + "where u.id = :id and u.active = true")
+    int updatePassword(@Param("id") UUID id, @Param("hash") String hash,
+            @Param("now") OffsetDateTime now);
+
+    /**
+     * Desativa a conta (soft delete). Devolve 0 se já estava inativa.
+     */
+    @Modifying
+    @Query("update User u set u.active = false, u.updatedAt = :now "
+            + "where u.id = :id and u.active = true")
+    int deactivate(@Param("id") UUID id, @Param("now") OffsetDateTime now);
 }

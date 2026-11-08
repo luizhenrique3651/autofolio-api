@@ -15,7 +15,6 @@ import static org.mockito.Mockito.when;
 import com.autofolio.auth.domain.PasswordResetToken;
 import com.autofolio.auth.domain.User;
 import com.autofolio.auth.repository.PasswordResetTokenRepository;
-import com.autofolio.auth.repository.RefreshTokenRepository;
 import com.autofolio.auth.repository.UserRepository;
 import com.autofolio.shared.exception.InvalidResetTokenException;
 import com.autofolio.shared.security.TokenHasher;
@@ -49,7 +48,7 @@ class PasswordResetServiceTest {
     @Mock
     private PasswordResetTokenRepository tokenRepository;
     @Mock
-    private RefreshTokenRepository refreshTokenRepository;
+    private SessionRevoker sessionRevoker;
     @Mock
     private PasswordEncoder passwordEncoder;
     @Mock
@@ -60,7 +59,7 @@ class PasswordResetServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PasswordResetService(userRepository, tokenRepository, refreshTokenRepository,
+        service = new PasswordResetService(userRepository, tokenRepository, sessionRevoker,
                 passwordEncoder, mailer,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         user = User.builder().id(UUID.randomUUID()).name("Luiz").email("luiz@teste.com")
@@ -128,6 +127,36 @@ class PasswordResetServiceTest {
         assertThatCode(() -> service.requestReset("x@teste.com")).doesNotThrowAnyException();
 
         verifyNoInteractions(tokenRepository, mailer);
+    }
+
+    @Test
+    @DisplayName("Deve ignorar silenciosamente conta desativada, sem token nem e-mail")
+    void shouldDoNothingWhenUserInactive() {
+        user.setActive(false);
+        when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(user));
+
+        assertThatCode(() -> service.requestReset("luiz@teste.com")).doesNotThrowAnyException();
+
+        verifyNoInteractions(tokenRepository, mailer);
+    }
+
+    @Test
+    @DisplayName("Reset: conta desativada lança a mesma exceção do token inválido e não troca "
+            + "a senha")
+    void shouldRejectResetOfInactiveUser() {
+        user.setActive(false);
+        var tokenHash = TokenHasher.sha256Hex("raw-token");
+        var resetToken = PasswordResetToken.builder().user(user).tokenHash(tokenHash)
+                .expiresAt(OffsetDateTime.ofInstant(NOW.plusSeconds(3600), ZoneOffset.UTC))
+                .used(true).build();
+        when(tokenRepository.consume(anyString(), any())).thenReturn(1);
+        when(tokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(resetToken));
+
+        assertThatThrownBy(() -> service.resetPassword("raw-token", "NovaSenha1"))
+                .isInstanceOf(InvalidResetTokenException.class);
+
+        assertThat(user.getPassword()).isEqualTo("hash");
+        verify(sessionRevoker, never()).revokeAll(any());
     }
 
     @Test
@@ -201,13 +230,12 @@ class PasswordResetServiceTest {
                 .thenReturn(1);
         when(tokenRepository.findByTokenHash(tokenHash)).thenReturn(Optional.of(resetToken));
         when(passwordEncoder.encode("NovaSenha1")).thenReturn("hash-novo");
-        when(refreshTokenRepository.revokeAllByUserId(user.getId())).thenReturn(2);
+        when(sessionRevoker.revokeAll(user.getId())).thenReturn(2);
 
         service.resetPassword("raw-token", "NovaSenha1");
 
         assertThat(user.getPassword()).isEqualTo("hash-novo");
-        verify(tokenRepository).invalidateUnusedByUserId(user.getId());
-        verify(refreshTokenRepository).revokeAllByUserId(user.getId());
+        verify(sessionRevoker).revokeAll(user.getId());
         assertThat(output.getOut()).contains("userId=" + user.getId())
                 .doesNotContain("raw-token").doesNotContain("NovaSenha1").doesNotContain(tokenHash);
     }
@@ -221,7 +249,7 @@ class PasswordResetServiceTest {
         assertThatThrownBy(() -> service.resetPassword("raw-token", "NovaSenha1"))
                 .isInstanceOf(InvalidResetTokenException.class);
 
-        verifyNoInteractions(userRepository, refreshTokenRepository, passwordEncoder);
+        verifyNoInteractions(userRepository, sessionRevoker, passwordEncoder);
     }
 
     @Test
@@ -248,7 +276,7 @@ class PasswordResetServiceTest {
                 .expiresAt(OffsetDateTime.ofInstant(NOW.plusSeconds(3600), ZoneOffset.UTC))
                 .used(true).build()));
         when(passwordEncoder.encode(anyString())).thenReturn("hash-novo");
-        when(refreshTokenRepository.revokeAllByUserId(user.getId()))
+        when(sessionRevoker.revokeAll(user.getId()))
                 .thenThrow(new IllegalStateException("db down"));
 
         assertThatThrownBy(() -> service.resetPassword("raw-token", "NovaSenha1"))

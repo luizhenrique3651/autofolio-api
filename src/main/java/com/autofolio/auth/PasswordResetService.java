@@ -2,7 +2,6 @@ package com.autofolio.auth;
 
 import com.autofolio.auth.domain.PasswordResetToken;
 import com.autofolio.auth.repository.PasswordResetTokenRepository;
-import com.autofolio.auth.repository.RefreshTokenRepository;
 import com.autofolio.auth.repository.UserRepository;
 import com.autofolio.shared.exception.InvalidResetTokenException;
 import com.autofolio.shared.security.TokenHasher;
@@ -34,7 +33,7 @@ public class PasswordResetService {
 
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository tokenRepository;
-    private final RefreshTokenRepository refreshTokenRepository;
+    private final SessionRevoker sessionRevoker;
     private final PasswordEncoder passwordEncoder;
     private final PasswordResetMailer mailer;
     private final Clock clock;
@@ -51,6 +50,11 @@ public class PasswordResetService {
                 return;
             }
             userId = user.getId();
+            if (!user.isActive()) {
+                // Conta desativada: não gera token nem envia e-mail (resposta HTTP segue 202)
+                log.info("Redefinição de senha ignorada: conta desativada (userId={})", userId);
+                return;
+            }
             var now = OffsetDateTime.now(clock);
             // Manutenção oportunista do usuário; falha aqui não impede gerar o token novo
             try {
@@ -97,15 +101,18 @@ public class PasswordResetService {
             throw new InvalidResetTokenException();
         }
 
-        UUID userId = null;
+        var user = tokenRepository.findByTokenHash(tokenHash)
+                .orElseThrow(() -> new IllegalStateException("Token consumido não encontrado"))
+                .getUser();
+        UUID userId = user.getId();
+        if (!user.isActive()) {
+            // Mesma resposta de token inválido; o rollback devolve o token a "não usado"
+            log.warn("Redefinição de senha recusada: conta desativada (userId={})", userId);
+            throw new InvalidResetTokenException();
+        }
         try {
-            var user = tokenRepository.findByTokenHash(tokenHash)
-                    .orElseThrow(() -> new IllegalStateException("Token consumido não encontrado"))
-                    .getUser();
-            userId = user.getId();
             user.setPassword(passwordEncoder.encode(newPassword));
-            tokenRepository.invalidateUnusedByUserId(userId);
-            int revoked = refreshTokenRepository.revokeAllByUserId(userId);
+            int revoked = sessionRevoker.revokeAll(userId);
             log.info("Senha redefinida (userId={}, refreshTokensRevogados={})", userId, revoked);
         } catch (RuntimeException e) {
             // Sem stacktrace: o catch-all do GlobalExceptionHandler já a registra

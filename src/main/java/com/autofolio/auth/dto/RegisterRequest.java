@@ -1,9 +1,9 @@
 package com.autofolio.auth.dto;
 
+import com.autofolio.shared.validation.Slug;
 import com.autofolio.shared.validation.StrongPassword;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -19,8 +19,7 @@ public record RegisterRequest(
         String email,
 
         @NotBlank(message = "O slug é obrigatório.")
-        @Pattern(regexp = "^[a-z0-9-]+$",
-                message = "O slug deve conter apenas letras minúsculas, números e hífens.")
+        @Slug
         String slug,
 
         @NotBlank(message = "A senha é obrigatória.")
