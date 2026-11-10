@@ -236,15 +236,16 @@ O Hibernate roda com `ddl-auto: validate`: quem altera o schema é sempre o Flyw
 ## 🧪 Testes
 
 ```bash
-mvn test                    # testes unitários e de controller (+ CloudinaryIntegrationTest, que usa rede)
+mvn test                    # testes unitários e de controller
 mvn test -Dtest='*IT'       # testes de integração (PostgreSQL real via Testcontainers)
+mvn test -Pexternal-tests   # sob demanda: só os testes @Tag("external") (rede e credenciais reais)
 ```
 
 - **Integração** usa Testcontainers com um PostgreSQL singleton compartilhado (`AbstractPostgresIT`). Precisa do Docker rodando e não toca no banco local.
 - **`ApplicationContextIT`** sobe o contexto completo sem profile e sem mocks, para garantir que todos os beans são criados.
 - Os testes nunca enviam e-mail de verdade.
 - O padrão do surefire não roda as classes `*IT` no `mvn test`. Rode-as com o segundo comando.
-- `CloudinaryIntegrationTest` faz upload real e depende de rede externa, então pode falhar de forma intermitente.
+- `CloudinaryIntegrationTest` faz upload real e é `@Tag("external")`: o surefire exclui a tag por padrão (`test.excludedGroups`), então nenhum dos comandos acima o roda. Execute-o só com `mvn test -Pexternal-tests`. Tem timeout (60 s) e é ignorado se `CLOUDINARY_*` não estiverem no ambiente ou no `.env`. **Atenção na IDE:** o IntelliJ não aplica o filtro de tag do surefire ao rodar "All Tests", então quem tem `CLOUDINARY_*` no `.env` faz upload real. Para evitar, rode a suíte pelo Maven ou exclua a tag `external` na configuração de execução (Run Configuration → Tags: `!external`).
 
 Meta de qualidade (Definition of Done): cobertura ≥ 80% nos services.
 

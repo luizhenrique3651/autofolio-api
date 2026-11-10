@@ -77,7 +77,7 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
 
 1. **Testes de integração** usam Testcontainers sobre a base comum `AbstractPostgresIT` (PostgreSQL singleton). Nunca usam o banco local.
 2. **O `ApplicationContextIT`** sobe o contexto completo sem profile e sem mocks e deve continuar passando. Ele cobre o que mocks escondem, como beans ausentes.
-3. **Testes nunca enviam e-mail nem chamam serviço externo real.** Exceção conhecida: `CloudinaryIntegrationTest`, a isolar.
+3. **Testes nunca enviam e-mail nem chamam serviço externo real.** Exceção conhecida: `CloudinaryIntegrationTest`, isolado com `@Tag("external")`: o surefire exclui a tag por padrão e ele só roda sob demanda com `mvn test -Pexternal-tests`. Tem `@Timeout` e é ignorado (Assumptions) sem as credenciais `CLOUDINARY_*`. Todo teste novo que chame serviço externo real deve usar a mesma tag.
 4. **Toda decisão de log e segurança tem teste:** formato do log sem dado pessoal, ramo de cada exceção, concorrência no consumo de tokens e `requestId` no corpo igual ao do header.
 5. **`mvn test` e `mvn test -Dtest='*IT'`** (todos juntos) passam antes de qualquer revisão.
 6. **Testes independentes de ordem e de ambiente.** A suíte inteira passa numa única JVM em ordem aleatória (`mvn test -Dtest='*Test,*IT' -Dsurefire.runOrder=random`), que é como a IDE roda. O bloco estático do `AutoFolioApplication` grava o `.env` como System properties para a JVM inteira. Por isso, teste que resolve configuração sem subir o contexto não pode usar as fontes `systemProperties`/`systemEnvironment`, nem depender de variável do SO.
@@ -160,7 +160,7 @@ A Opção C troca um pequeno custo de manutenção por previsibilidade. Em tasks
 1. [x] Configurar o plugin de checkstyle com `google_checks` e zerar as violações.
 2. [ ] Configurar o `maven-failsafe-plugin` para os `*IT` rodarem em `mvn verify` (pré-requisito do CI na AF-043).
 3. [ ] Configurar `-javaagent` do Mockito no surefire.
-4. [ ] Isolar o `CloudinaryIntegrationTest` da rede externa (mock ou tag separada).
+4. [x] Isolar o `CloudinaryIntegrationTest` da rede externa (resolvido: `@Tag("external")` + profile `external-tests`).
 5. [ ] Guardar o refresh token como hash SHA-256 (card próprio; alinha com §3.4).
 6. [ ] Índice único parcial para tokens de reset pendentes por usuário (forgot-password simultâneo).
 7. [ ] Limpeza global agendada (`@Scheduled`) de tokens expirados, com índice em `expires_at`.
