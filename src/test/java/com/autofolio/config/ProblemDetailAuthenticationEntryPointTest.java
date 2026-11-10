@@ -29,7 +29,8 @@ class ProblemDetailAuthenticationEntryPointTest {
                 HttpStatus.BAD_REQUEST,
                 "malformado", null);
 
-        entryPoint.commence(new MockHttpServletRequest(), response,
+        var request = new MockHttpServletRequest("GET", "/api/v1/users/me");
+        entryPoint.commence(request, response,
                 new OAuth2AuthenticationException(error));
 
         var json = objectMapper.readTree(response.getContentAsString(StandardCharsets.UTF_8));
@@ -37,5 +38,53 @@ class ProblemDetailAuthenticationEntryPointTest {
         assertThat(response.getContentType()).contains("application/problem+json");
         assertThat(json.get("status").asInt()).isEqualTo(400);
         assertThat(json.get("title").asText()).isEqualTo("Requisição Inválida");
+        assertThat(json.get("error").asText()).isEqualTo("Bad Request");
+        assertThat(json.get("path").asText()).isEqualTo("/api/v1/users/me");
+    }
+
+    @Test
+    @DisplayName("path do 401 não inclui a query string")
+    void pathOmitsQueryString() throws Exception {
+        var response = new MockHttpServletResponse();
+        var request = new MockHttpServletRequest("GET", "/api/v1/users/me");
+        request.setQueryString("token=segredo");
+
+        entryPoint.commence(request, response,
+                new OAuth2AuthenticationException("invalid_token"));
+
+        var raw = response.getContentAsString(StandardCharsets.UTF_8);
+        assertThat(objectMapper.readTree(raw).get("path").asText())
+                .isEqualTo("/api/v1/users/me");
+        assertThat(raw).doesNotContain("segredo");
+    }
+
+    @Test
+    @DisplayName("401: instance como nos demais erros e Content-Type sem charset, corpo em UTF-8")
+    void shouldIncludeInstanceAndPlainContentType() throws Exception {
+        var response = new MockHttpServletResponse();
+        var request = new MockHttpServletRequest("GET", "/api/v1/users/me");
+
+        entryPoint.commence(request, response,
+                new OAuth2AuthenticationException("invalid_token"));
+
+        var json = objectMapper.readTree(response.getContentAsString(StandardCharsets.UTF_8));
+        assertThat(json.get("instance").asText()).isEqualTo("/api/v1/users/me");
+        assertThat(response.getContentType()).isEqualTo("application/problem+json");
+        assertThat(json.get("title").asText()).isEqualTo("Não Autorizado");
+    }
+
+    @Test
+    @DisplayName("URI inválida: o 401 sai sem instance, mas com path")
+    void shouldOmitInstanceWhenUriIsInvalid() throws Exception {
+        var response = new MockHttpServletResponse();
+        var request = new MockHttpServletRequest("GET", "/api/v1/a b");
+
+        entryPoint.commence(request, response,
+                new OAuth2AuthenticationException("invalid_token"));
+
+        var json = objectMapper.readTree(response.getContentAsString(StandardCharsets.UTF_8));
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(json.has("instance")).isFalse();
+        assertThat(json.get("path").asText()).isEqualTo("/api/v1/a b");
     }
 }

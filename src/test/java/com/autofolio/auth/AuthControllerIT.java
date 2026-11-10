@@ -1,6 +1,7 @@
 package com.autofolio.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -16,10 +17,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.autofolio.AbstractPostgresIT;
+import com.autofolio.auth.domain.User;
 import com.autofolio.auth.dto.ForgotPasswordRequest;
 import com.autofolio.auth.dto.LoginRequest;
 import com.autofolio.auth.dto.RefreshRequest;
 import com.autofolio.auth.dto.RegisterRequest;
+import com.autofolio.auth.repository.UserRepository;
 import com.autofolio.shared.security.TokenHasher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,6 +47,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -52,6 +56,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.core.NestedExceptionUtils;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.MailSendException;
@@ -66,6 +74,7 @@ import org.springframework.test.web.servlet.MvcResult;
 @ActiveProfiles("dev")
 @Tag("integration")
 @DisplayName("Testes de Integração - AuthController (Postgres via Testcontainers)")
+@ExtendWith(OutputCaptureExtension.class)
 class AuthControllerIT extends AbstractPostgresIT {
 
     private static final String EMAIL = "vendedor@teste.com";
@@ -85,6 +94,9 @@ class AuthControllerIT extends AbstractPostgresIT {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Autowired
     private JwtDecoder jwtDecoder;
@@ -122,6 +134,26 @@ class AuthControllerIT extends AbstractPostgresIT {
     private JsonNode body(MvcResult result) throws Exception {
         return objectMapper.readTree(result.getResponse()
                 .getContentAsString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    @DisplayName("Unique violada no banco: nem o log nem a mensagem da exceção trazem o e-mail"
+            + " ou \"Key (\", mas trazem a constraint (logServerErrorDetail=false)")
+    void uniqueViolationDoesNotLogEmail(CapturedOutput output) {
+        userRepository.saveAndFlush(user("a-slug"));
+
+        var thrown = catchThrowable(() -> userRepository.saveAndFlush(user("b-slug")));
+
+        assertThat(thrown).isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(NestedExceptionUtils.getMostSpecificCause(thrown).getMessage())
+                .doesNotContain(EMAIL).doesNotContain("Key (").contains("users_email_key");
+        assertThat(thrown.getMessage()).doesNotContain(EMAIL);
+        assertThat(output.getAll()).doesNotContain(EMAIL).doesNotContain("Key (")
+                .contains("users_email_key");
+    }
+
+    private static User user(String slug) {
+        return User.builder().name("Dup").email(EMAIL).password("hash").slug(slug).build();
     }
 
     @Test
@@ -465,8 +497,8 @@ class AuthControllerIT extends AbstractPostgresIT {
         var r = refresh("x".repeat(256));
         assertProblem(r, 400, "Requisição Inválida", "bad-request");
         assertThat(objectMapper.readTree(r.getResponse().getContentAsString(StandardCharsets.UTF_8))
-                .get("errors").asText())
-                .startsWith("refreshToken:");
+                .get("errors").get(0).get("field").asText())
+                .isEqualTo("refreshToken");
     }
 
     private void assertProblem(MvcResult r, int status, String title,
@@ -486,9 +518,12 @@ class AuthControllerIT extends AbstractPostgresIT {
     @Test
     @DisplayName("Handler: 415, 405, 404 e 406 em problem+json padronizado")
     void springMvcErrorsArePadronized() throws Exception {
-        assertProblem(mockMvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.TEXT_PLAIN)
-                .content("x")).andReturn(),
-                415, "Tipo de Mídia Não Suportado", "unsupported-media-type");
+        var unsupported = mockMvc.perform(post("/api/v1/auth/refresh")
+                .contentType(MediaType.TEXT_PLAIN).content("x")).andReturn();
+        assertProblem(unsupported, 415, "Tipo de Mídia Não Suportado", "unsupported-media-type");
+        // messages.properties carregado pelo Spring Boot (detail em português)
+        assertThat(body(unsupported).get("detail").asText())
+                .isEqualTo("O tipo de conteúdo da requisição não é suportado.");
         assertProblem(mockMvc.perform(get("/api/v1/auth/refresh")).andReturn(),
                 405, "Método Não Permitido", "method-not-allowed");
         assertProblem(mockMvc.perform(get("/api/v1/auth/nao-existe")).andReturn(),
@@ -512,7 +547,9 @@ class AuthControllerIT extends AbstractPostgresIT {
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andReturn();
         assertProblem(v, 400, "Requisição Inválida", "bad-request");
         assertThat(body(v).get("detail").asText()).isEqualTo("Falha na validação dos campos.");
-        assertThat(body(v).get("errors").asText()).contains("email:");
+        assertThat(body(v).get("errors").findValuesAsText("field")).contains("email");
+        assertThat(body(v).get("error").asText()).isEqualTo("Bad Request");
+        assertThat(body(v).get("path").asText()).isEqualTo("/api/v1/auth/register");
         register();
         var c = mockMvc.perform(post("/api/v1/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)

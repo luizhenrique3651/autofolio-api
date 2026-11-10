@@ -1,6 +1,13 @@
 spring:
   application:
     name: autofolio-api
+
+  datasource:
+    hikari:
+      # pgjdbc: sem o "Detail: Key (coluna)=(valor)" nas mensagens de erro do servidor, que o
+      # Hibernate logaria em ERROR com e-mail etc. (ADR-001 §1.6). Vale para todos os profiles
+      data-source-properties:
+        logServerErrorDetail: false
   
   # Java 21 Virtual Threads Activation (Global)
   threads:

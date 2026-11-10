@@ -1,6 +1,6 @@
 package com.autofolio.auth;
 
-import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -245,7 +245,7 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(new ResetPasswordRequest("tok",
                         password))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors").value(containsString("newPassword")));
+                .andExpect(jsonPath("$.errors[0].field").value("newPassword"));
 
         verifyNoInteractions(authService);
     }
@@ -259,7 +259,7 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(new ResetPasswordRequest(token,
                         "Senha1234"))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors").value(containsString("token")));
+                .andExpect(jsonPath("$.errors[*].field").value(hasItem("token")));
 
         verifyNoInteractions(authService);
     }

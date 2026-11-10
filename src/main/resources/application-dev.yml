@@ -33,8 +33,8 @@ logging:
   level:
     root: INFO
     com.autofolio: DEBUG
+    # Só o SQL com "?"; não ligar o BasicBinder (TRACE loga valores bindados, ADR-001 §1.6)
     org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
 
 # Cloudinary Configuration
 cloudinary:

@@ -118,12 +118,17 @@ Todo erro responde `application/problem+json`:
   "title": "Não Autorizado",
   "status": 401,
   "detail": "Credenciais inválidas.",
+  "error": "Unauthorized",
+  "path": "/api/v1/auth/login",
   "timestamp": "2026-10-31T12:00:00Z",
   "requestId": "3b1f6c2e-..."
 }
 ```
 
-- 400 de validação traz a propriedade `errors` com os campos inválidos.
+- `error` é o reason phrase HTTP e `path` a URI da requisição (também no 401 do resource server).
+- 400 de validação traz `errors`, lista de `{ "field": "email", "message": "..." }` (corpo, parâmetros e `ConstraintViolation`).
+- 404 (`EntityNotFoundException`: inexistente ou de outro usuário), 409 (`DataConflictException` e `DataIntegrityViolationException`, sempre genérico: sem constraint nem SQL) e 500 (`"Erro interno — tente novamente."`).
+- O `detail` dos erros do Spring (parte ausente, tipo não suportado...) vem em português de `messages.properties`.
 - 404, 405, 406 e 415 seguem o mesmo formato, com `title` em português.
 - **`X-Request-Id`**: toda resposta devolve o header. O cliente pode enviar o próprio id (`[A-Za-z0-9._-]{1,64}`); caso contrário, a API gera um UUID. O mesmo id aparece no corpo dos erros (`requestId`) e em **todas as linhas de log** (`%X{requestId}`), inclusive nas tarefas `@Async`. Ao reportar um problema, informe esse id. O CORS libera o envio e a leitura do header pelo navegador (`allowedHeaders`/`exposedHeaders`).
 

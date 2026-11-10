@@ -47,8 +47,10 @@ public class ProblemDetailAuthenticationEntryPoint implements AuthenticationEntr
                 ? ProblemDetails.badRequest("Requisição de autenticação inválida.")
                 : ProblemDetails.unauthorized(InvalidSessionException.MESSAGE);
 
+        ProblemDetails.setPath(problemDetail, request.getRequestURI());
+
+        // Mesmo Content-Type dos outros erros (sem charset); o Jackson escreve em UTF-8
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.setCharacterEncoding("UTF-8");
-        objectMapper.writeValue(response.getWriter(), problemDetail);
+        objectMapper.writeValue(response.getOutputStream(), problemDetail);
     }
 }

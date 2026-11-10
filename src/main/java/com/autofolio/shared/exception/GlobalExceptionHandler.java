@@ -1,8 +1,11 @@
 package com.autofolio.shared.exception;
 
-import java.util.stream.Collectors;
+import jakarta.validation.ConstraintViolationException;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -13,11 +16,14 @@ import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.validation.Errors;
+import org.springframework.validation.method.ParameterErrors;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
@@ -34,6 +40,62 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DataConflictException.class)
     public ProblemDetail handleDataConflictException(DataConflictException ex) {
         return ProblemDetails.conflict(ex.getMessage());
+    }
+
+    /**
+     * Converte recurso inexistente (ou de outro usuário) em 404.
+     */
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ProblemDetail handleEntityNotFoundException(EntityNotFoundException ex) {
+        return ProblemDetails.notFound(ex.getMessage());
+    }
+
+    /**
+     * Converte violação de integridade (ex.: unique em corrida) em 409 genérico, sem vazar o
+     * nome da constraint nem SQL. A causa raiz fica no log.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        // A mensagem traz SQL com valores (dado pessoal): WARN só com tipos, constraint e o
+        // ponto do código; a stacktrace completa vai para DEBUG (ADR-001 §1.6/§1.7)
+        log.warn("Violação de integridade de dados: {} (constraint={}, origem={})",
+                ExceptionSummary.describe(ex), ExceptionSummary.constraintName(ex),
+                ExceptionSummary.originFrame(ex));
+        log.debug("Stacktrace da violação de integridade", ex);
+        return ProblemDetails.conflict("Conflito com o estado atual dos dados. "
+                + "Atualize e tente novamente.");
+    }
+
+    /**
+     * Converte violação de Bean Validation fora do corpo (ex.: parâmetros e services) em 400.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ProblemDetail handleConstraintViolation(ConstraintViolationException ex) {
+        var errors = ex.getConstraintViolations().stream()
+                .map(v -> new FieldValidationError(lastNode(v.getPropertyPath().toString()),
+                        v.getMessage()))
+                .toList();
+        return validationProblem(errors);
+    }
+
+    // Erros de campo com o field real; erros globais usam o nome do objeto (ou o do parâmetro)
+    private static List<FieldValidationError> errorsOf(Errors errors, String globalName) {
+        var result = new ArrayList<FieldValidationError>();
+        errors.getFieldErrors().forEach(e -> result.add(
+                new FieldValidationError(e.getField(), e.getDefaultMessage())));
+        errors.getGlobalErrors().forEach(e -> result.add(new FieldValidationError(
+                globalName == null ? e.getObjectName() : globalName, e.getDefaultMessage())));
+        return result;
+    }
+
+    private static String lastNode(String path) {
+        return path.substring(path.lastIndexOf('.') + 1);
+    }
+
+    private static ProblemDetail validationProblem(List<FieldValidationError> errors) {
+        var problemDetail = ProblemDetails.badRequest("Falha na validação dos campos.");
+        problemDetail.setProperty("errors", errors);
+        return problemDetail;
     }
 
     /**
@@ -103,13 +165,31 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             @NonNull HttpHeaders headers,
             @NonNull HttpStatusCode status,
             @NonNull WebRequest request) {
-        var details = ex.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .collect(Collectors.joining(", "));
+        var errors = errorsOf(ex.getBindingResult(), null);
+        return handleExceptionInternal(ex, validationProblem(errors), headers,
+                HttpStatus.BAD_REQUEST, request);
+    }
 
-        var problemDetail = ProblemDetails.badRequest("Falha na validação dos campos.");
-        problemDetail.setProperty("errors", details);
-        return handleExceptionInternal(ex, problemDetail, headers, HttpStatus.BAD_REQUEST, request);
+    @Override
+    protected ResponseEntity<Object> handleHandlerMethodValidationException(
+            @NonNull HandlerMethodValidationException ex,
+            @NonNull HttpHeaders headers,
+            @NonNull HttpStatusCode status,
+            @NonNull WebRequest request) {
+        var errors = new ArrayList<FieldValidationError>();
+        ex.getAllValidationResults().forEach(result -> {
+            var name = result.getMethodParameter().getParameterName();
+            var parameter = name == null ? "parâmetro" : name;
+            if (result instanceof ParameterErrors parameterErrors) {
+                // @Valid em objeto: mantém o campo real, não o nome do parâmetro
+                errors.addAll(errorsOf(parameterErrors, parameter));
+            } else {
+                result.getResolvableErrors().forEach(e -> errors.add(
+                        new FieldValidationError(parameter, e.getDefaultMessage())));
+            }
+        });
+        return handleExceptionInternal(ex, validationProblem(errors), headers,
+                HttpStatus.BAD_REQUEST, request);
     }
 
     // Mensagem genérica, sem expor detalhes do parser
@@ -139,6 +219,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (resolvedBody instanceof ProblemDetail problemDetail) {
             ProblemDetails.normalize(problemDetail);
         }
+        // 5xx do Spring MVC não passa pelo catch-all: loga aqui, uma vez (ADR-001 §1.8)
+        if (statusCode.is5xxServerError()) {
+            log.error("Erro do servidor ({})", statusCode.value(), ex);
+        }
         return super.handleExceptionInternal(ex, resolvedBody, headers, statusCode, request);
     }
 
@@ -155,6 +239,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             throw authentication;
         }
         log.error("Erro inesperado", ex);
-        return ProblemDetails.internalError("Ocorreu um erro inesperado no servidor.");
+        return ProblemDetails.internalError("Erro interno — tente novamente.");
     }
 }

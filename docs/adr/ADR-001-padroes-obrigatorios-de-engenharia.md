@@ -28,7 +28,7 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
 3. **O MDC chega ao `@Async`** via `TaskDecorator`. Código assíncrono novo deve usar o executor configurado.
 4. **O padrão de log inclui `%X{requestId}`** em todos os profiles.
 5. **Todo `ProblemDetail` traz `requestId`**, além de `timestamp`.
-6. **Log nunca contém token, hash completo, senha ou e-mail.** Identifique pelo `userId`. Para token, use no máximo um prefixo do hash.
+6. **Log nunca contém token, hash completo, senha ou e-mail.** Identifique pelo `userId`. Para token, use no máximo um prefixo do hash. O datasource usa `logServerErrorDetail=false` (pgjdbc não inclui `Detail: Key (coluna)=(valor)` nas mensagens, que o Hibernate logaria em ERROR), e o logger de bind (`BasicBinder`/TRACE) é proibido em qualquer profile.
 7. **Falha esperada de dependência externa** (ex.: SMTP) sai em `ERROR`, com `userId`, tipo da exceção e tipo da causa raiz, sem a mensagem quando ela puder conter dado pessoal. A stacktrace completa vai para `DEBUG`.
 8. **Falha inesperada** sai em `ERROR` com stacktrace, **uma única vez**. Quem relança não loga a stacktrace; ela fica no handler global.
 9. **O catch-all 500** loga o erro e relança `AccessDeniedException` e `AuthenticationException`, para não transformá-las em 500.
@@ -36,13 +36,16 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
 
 ### 2. Contrato de erro da API
 
-1. **Todo erro responde `application/problem+json`** (RFC 7807), montado pela factory `ProblemDetails`, com `type` da autofolio, `title` em português, `status`, `timestamp` e `requestId`.
+1. **Todo erro responde `application/problem+json`** (RFC 7807), montado pela factory `ProblemDetails`, com `type` da autofolio, `title` em português, `status`, `error` (reason phrase), `path`, `timestamp` e `requestId`.
 2. **O `GlobalExceptionHandler` estende `ResponseEntityExceptionHandler`.** Assim, 404, 405, 406, 415 e demais erros do Spring MVC seguem o mesmo contrato.
-3. **400 de validação** traz a propriedade `errors`. **JSON malformado** dá 400 com mensagem genérica, sem detalhes do parser.
+3. **400 de validação** traz a propriedade `errors`, uma lista de objetos `{ field, message }` (corpo, parâmetros e `ConstraintViolation`). **JSON malformado** dá 400 com mensagem genérica, sem detalhes do parser.
 4. **Fluxos sensíveis não revelam existência de conta:**
    - mesmo 401 para e-mail inexistente e senha errada, inclusive no tempo de resposta;
    - `forgot-password` responde sempre 202;
    - mesma resposta para token inexistente, expirado ou revogado.
+5. **`DataIntegrityViolationException` vira 409 genérico**, sem nome de constraint nem SQL; o log WARN leva os tipos da exceção e da causa raiz, o nome da constraint e a origem (1º frame `com.autofolio`); a stacktrace, que traz o SQL com valores, só vai para DEBUG. **Recurso inexistente ou de outro usuário** lança `EntityNotFoundException` (404). **O 500** responde "Erro interno — tente novamente.".
+6. **O `detail` dos erros do Spring MVC é traduzido em `messages.properties`** (`problemDetail.<FQCN>`), sem mapear exceção a exceção no handler.
+7. **5xx gerado pelo Spring MVC** (ex.: `HttpMessageNotWritableException`) também sai em `ERROR` com stacktrace, uma vez, no `handleExceptionInternal`.
 
 ### 3. Segurança e autenticação
 
@@ -163,7 +166,7 @@ A Opção C troca um pequeno custo de manutenção por previsibilidade. Em tasks
 7. [ ] Limpeza global agendada (`@Scheduled`) de tokens expirados, com índice em `expires_at`.
 8. [ ] Invalidar o access token após a redefinição de senha (blacklist ou versionamento de token).
 9. [ ] Liberar `/actuator/health` para monitoramento externo (AF-042/AF-046).
-10. [ ] `detail` dos erros do Spring em português via `messages.properties` (`problemDetail.<FQCN>`).
+10. [x] `detail` dos erros do Spring em português via `messages.properties` (`problemDetail.<FQCN>`; resolvido na AF-015).
 11. [x] Tipar o `Map` cru do `CloudinaryConfig` (resolvido na AF-014: cast isolado com `@SuppressWarnings` pontual).
 12. [ ] Rate limit no forgot-password e limites do executor `@Async` (hardening).
 13. [ ] Padronizar a configuração tipada: migrar `JwtConfig` e `CloudinaryConfig` de `@Value` para `@ConfigurationProperties` com validação de obrigatoriedade e valor em branco, como já faz o `FrontendProperties`.

@@ -9,6 +9,8 @@ import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
  * Fábrica de ProblemDetail padronizados (RFC 7807).
@@ -52,6 +54,13 @@ public final class ProblemDetails {
     }
 
     /**
+     * Cria o ProblemDetail de 404.
+     */
+    public static ProblemDetail notFound(String detail) {
+        return build(HttpStatus.NOT_FOUND, detail);
+    }
+
+    /**
      * Cria o ProblemDetail de 409.
      */
     public static ProblemDetail conflict(String detail) {
@@ -90,11 +99,25 @@ public final class ProblemDetails {
             problemDetail.setTitle(label.title());
             problemDetail.setType(URI.create(TYPE_BASE + label.slug()));
         }
-        if (problemDetail.getProperties() == null || !problemDetail.getProperties()
-                .containsKey("timestamp")) {
+        var properties = problemDetail.getProperties();
+        if (properties == null || !properties.containsKey("timestamp")) {
             problemDetail.setProperty("timestamp", Instant.now());
         }
-        addRequestId(problemDetail);
+        addCommonProperties(problemDetail);
+    }
+
+    /**
+     * Define {@code path} e {@code instance} (URI da requisição) quando o chamador já tem a
+     * requisição em mãos, como o entry point do resource server. Se a URI não for válida, omite
+     * o {@code instance}.
+     */
+    public static void setPath(ProblemDetail problemDetail, String requestUri) {
+        problemDetail.setProperty("path", requestUri);
+        try {
+            problemDetail.setInstance(URI.create(requestUri));
+        } catch (IllegalArgumentException e) {
+            problemDetail.setInstance(null);
+        }
     }
 
     private static Label labelFor(HttpStatusCode code) {
@@ -116,8 +139,21 @@ public final class ProblemDetails {
         problemDetail.setTitle(label.title());
         problemDetail.setType(URI.create(TYPE_BASE + label.slug()));
         problemDetail.setProperty("timestamp", Instant.now());
-        addRequestId(problemDetail);
+        addCommonProperties(problemDetail);
         return problemDetail;
+    }
+
+    // error (reason phrase do status), path (URI da requisição) e requestId, em todo erro
+    private static void addCommonProperties(ProblemDetail problemDetail) {
+        var status = HttpStatus.resolve(problemDetail.getStatus());
+        if (status != null) {
+            problemDetail.setProperty("error", status.getReasonPhrase());
+        }
+        var requestAttributes = RequestContextHolder.getRequestAttributes();
+        if (requestAttributes instanceof ServletRequestAttributes attributes) {
+            problemDetail.setProperty("path", attributes.getRequest().getRequestURI());
+        }
+        addRequestId(problemDetail);
     }
 
     // Permite ao cliente citar o mesmo id que aparece nos logs e no header X-Request-Id
