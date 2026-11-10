@@ -70,7 +70,7 @@ class ProfileServiceTest {
     @DisplayName("Atualiza os campos editáveis, preserva a foto e devolve o perfil")
     void shouldUpdateProfile(CapturedOutput output) {
         var profile = UserProfile.builder().user(user).photoUrl("http://foto").build();
-        when(userService.requireActive(user.getId())).thenReturn(user);
+        when(userService.loadUser(user.getId())).thenReturn(user);
         when(userProfileRepository.findByUserId(user.getId())).thenReturn(Optional.of(profile));
         when(userProfileRepository.save(profile)).thenReturn(profile);
 
@@ -92,7 +92,7 @@ class ProfileServiceTest {
     void shouldClearMissingFields() {
         var profile = UserProfile.builder().user(user).bio("Antiga").whatsapp("11999998888")
                 .city("RJ").specialties(List.of("SUV")).expYears(9).build();
-        when(userService.requireActive(user.getId())).thenReturn(user);
+        when(userService.loadUser(user.getId())).thenReturn(user);
         when(userProfileRepository.findByUserId(user.getId())).thenReturn(Optional.of(profile));
         when(userProfileRepository.save(profile)).thenReturn(profile);
 
@@ -109,7 +109,7 @@ class ProfileServiceTest {
     @Test
     @DisplayName("Cria o perfil quando o usuário ainda não tem registro")
     void shouldCreateMissingProfile() {
-        when(userService.requireActive(user.getId())).thenReturn(user);
+        when(userService.loadUser(user.getId())).thenReturn(user);
         when(userProfileRepository.findByUserId(user.getId())).thenReturn(Optional.empty());
         when(userProfileRepository.save(any(UserProfile.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
@@ -125,7 +125,7 @@ class ProfileServiceTest {
     @Test
     @DisplayName("Conta inexistente ou desativada lança InvalidSessionException")
     void shouldRejectInactiveUser() {
-        when(userService.requireActive(user.getId())).thenThrow(new InvalidSessionException());
+        when(userService.loadUser(user.getId())).thenThrow(new InvalidSessionException());
 
         assertThatThrownBy(() -> service.update(user.getId(),
                 new UpdateProfileRequest("Bio", null, null, null, 1)))
@@ -138,7 +138,7 @@ class ProfileServiceTest {
     void shouldUploadPhoto(boolean png, CapturedOutput output) {
         var content = png ? PNG : JPEG;
         var profile = UserProfile.builder().user(user).bio("Bio").build();
-        when(userService.requireActive(user.getId())).thenReturn(user);
+        when(userService.loadUser(user.getId())).thenReturn(user);
         when(photoStorage.upload(user.getId(), content)).thenReturn(URL);
         when(userProfileRepository.findByUserId(user.getId())).thenReturn(Optional.of(profile));
         when(userProfileRepository.save(profile)).thenReturn(profile);
@@ -154,7 +154,7 @@ class ProfileServiceTest {
     @Test
     @DisplayName("Foto: cria o perfil quando o usuário ainda não tem registro")
     void shouldCreateProfileOnPhotoUpload() {
-        when(userService.requireActive(user.getId())).thenReturn(user);
+        when(userService.loadUser(user.getId())).thenReturn(user);
         when(photoStorage.upload(user.getId(), PNG)).thenReturn(URL);
         when(userProfileRepository.findByUserId(user.getId())).thenReturn(Optional.empty());
         when(userProfileRepository.save(any(UserProfile.class)))
@@ -172,7 +172,7 @@ class ProfileServiceTest {
     @DisplayName("Foto: corrida na criação do perfil (user_id único) repete a gravação uma vez")
     void shouldRetrySaveOnConcurrentProfileCreation() {
         var existing = UserProfile.builder().user(user).build();
-        when(userService.requireActive(user.getId())).thenReturn(user);
+        when(userService.loadUser(user.getId())).thenReturn(user);
         when(photoStorage.upload(user.getId(), PNG)).thenReturn(URL);
         when(userProfileRepository.findByUserId(user.getId()))
                 .thenReturn(Optional.empty())
@@ -189,7 +189,7 @@ class ProfileServiceTest {
     @Test
     @DisplayName("Foto: GIF, vazio e PNG/JPEG corrompido são recusados com WARN antes do upload")
     void shouldRejectInvalidImages(CapturedOutput output) {
-        when(userService.requireActive(user.getId())).thenReturn(user);
+        when(userService.loadUser(user.getId())).thenReturn(user);
 
         for (var content : new byte[][] {"GIF89a....".getBytes(StandardCharsets.US_ASCII),
                 new byte[0], TestImages.corruptedPng(), TestImages.corruptedJpeg()}) {
@@ -205,7 +205,7 @@ class ProfileServiceTest {
     @Test
     @DisplayName("Foto: falha do Cloudinary propaga e nada é gravado")
     void shouldNotSaveWhenUploadFails() {
-        when(userService.requireActive(user.getId())).thenReturn(user);
+        when(userService.loadUser(user.getId())).thenReturn(user);
         when(photoStorage.upload(user.getId(), PNG))
                 .thenThrow(new MediaStorageException("falhou", null));
 
@@ -217,7 +217,7 @@ class ProfileServiceTest {
     @Test
     @DisplayName("Foto: conta desativada lança InvalidSessionException sem tocar no arquivo")
     void shouldRejectInactiveUserOnPhoto() {
-        when(userService.requireActive(user.getId())).thenThrow(new InvalidSessionException());
+        when(userService.loadUser(user.getId())).thenThrow(new InvalidSessionException());
 
         assertThatThrownBy(() -> service.updatePhoto(user.getId(), file(PNG)))
                 .isInstanceOf(InvalidSessionException.class);

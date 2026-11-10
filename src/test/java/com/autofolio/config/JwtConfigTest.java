@@ -2,7 +2,9 @@ package com.autofolio.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
+import com.autofolio.auth.security.ActiveAccountValidator;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +26,7 @@ class JwtConfigTest {
         var config = new JwtConfig("a".repeat(32));
 
         assertThat(config.jwtEncoder()).isNotNull();
-        assertThat(config.jwtDecoder()).isNotNull();
+        assertThat(config.jwtDecoder(mock(ActiveAccountValidator.class))).isNotNull();
     }
 
     @Test

@@ -16,6 +16,8 @@ import jakarta.validation.ValidatorFactory;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.sql.SQLException;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -49,10 +51,28 @@ class GlobalExceptionHandlerTest {
     record Body(@NotBlank String name, @Size(max = 3) String code) {
     }
 
+    enum Color { RED, BLUE }
+
+    record EnumBody(Color color, List<Color> colors) {
+    }
+
+    // Serviço com @Validated simulado: o validador de métodos gera os mesmos caminhos
+    static class Svc {
+        void param(@NotBlank String name, @Size(max = 3) String code) {
+            Objects.requireNonNull(name, code);
+        }
+
+        @NotBlank
+        String result(String value) {
+            return value;
+        }
+    }
+
     @RestController
     static class ProbeController {
         @PostMapping("/probe/validate")
         void validate(@Valid @RequestBody Body body) {
+            Objects.requireNonNull(body);
         }
 
         @GetMapping("/probe/not-found")
@@ -68,9 +88,30 @@ class GlobalExceptionHandlerTest {
         }
 
         @GetMapping("/probe/constraint")
-        void constraint() {
-            throw new ConstraintViolationException(
-                    VALIDATOR.validate(new Body("", "abcd")));
+        void constraint() throws NoSuchMethodException {
+            var method = Svc.class.getDeclaredMethod("param", String.class, String.class);
+            throw new ConstraintViolationException(VALIDATOR.forExecutables()
+                    .validateParameters(new Svc(), method, new Object[] {"", "abcd"}));
+        }
+
+        // Violação de entidade (pre-persist do Hibernate): caminho só com a propriedade
+        @GetMapping("/probe/constraint-bean")
+        void constraintBean() {
+            throw new ConstraintViolationException(VALIDATOR.validate(new Body("", "abcd")));
+        }
+
+        // Violação do valor de retorno de um service: bug nosso
+        @GetMapping("/probe/constraint-return")
+        void constraintReturn() throws NoSuchMethodException {
+            var method = Svc.class.getDeclaredMethod("result", String.class);
+            throw new ConstraintViolationException(VALIDATOR.forExecutables()
+                    .validateReturnValue(new Svc(), method, ""));
+        }
+
+        @GetMapping("/probe/request-validation")
+        void requestValidation() {
+            throw new RequestValidationException(
+                    List.of(new FieldValidationError("yearFab", "fora da faixa")));
         }
 
         @GetMapping("/probe/proxy-frame")
@@ -84,13 +125,20 @@ class GlobalExceptionHandlerTest {
             throw ex;
         }
 
+        @PostMapping("/probe/enum")
+        void enumBody(@RequestBody EnumBody body) {
+            Objects.requireNonNull(body);
+        }
+
         @GetMapping("/probe/param")
         void param(@RequestParam("q") @Size(min = 3, message = "muito curto") String q) {
+            Objects.requireNonNull(q);
         }
 
         @PostMapping("/probe/object")
         void object(@Valid @RequestBody Body body,
                 @RequestParam("q") @Size(min = 3) String q) {
+            Objects.requireNonNull(body, q);
         }
 
         @GetMapping("/probe/not-writable")
@@ -105,6 +153,7 @@ class GlobalExceptionHandlerTest {
 
         @PostMapping("/probe/upload")
         void upload(@RequestPart("file") MultipartFile file) {
+            Objects.requireNonNull(file);
         }
     }
 
@@ -170,6 +219,63 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.errors.length()").value(2))
                 .andExpect(jsonPath("$.errors[?(@.field=='name')].message").isNotEmpty())
                 .andExpect(jsonPath("$.errors[?(@.field=='code')].message").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("ConstraintViolation de entidade ou de retorno é bug nosso: 500 com ERROR e "
+            + "stacktrace, sem 400")
+    void constraintViolationOutsideParametersIs500(CapturedOutput output) throws Exception {
+        for (var probe : new String[] {"/probe/constraint-bean", "/probe/constraint-return"}) {
+            mockMvc.perform(get(probe))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.errors").doesNotExist())
+                    .andExpect(jsonPath("$.detail").value("Erro interno — tente novamente."));
+        }
+
+        assertThat(output.getOut()).contains("ERROR")
+                .contains("Violação de Bean Validation fora dos parâmetros")
+                .contains("ConstraintViolationException");
+    }
+
+    @Test
+    @DisplayName("RequestValidationException vira 400 com errors {field, message}")
+    void requestValidationIs400() throws Exception {
+        mockMvc.perform(get("/probe/request-validation"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].field").value("yearFab"))
+                .andExpect(jsonPath("$.errors[0].message").value("fora da faixa"));
+    }
+
+    @Test
+    @DisplayName("Enum inválido no JSON: 400 com o campo e os valores aceitos, sem ecoar o valor")
+    void invalidEnumIs400WithField() throws Exception {
+        mockMvc.perform(post("/probe/enum").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"color\":\"GREEN\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].field").value("color"))
+                .andExpect(jsonPath("$.errors[0].message")
+                        .value("Valor inválido. Valores aceitos: RED, BLUE."))
+                .andExpect(jsonPath("$.detail").value("Falha na validação dos campos."));
+
+        mockMvc.perform(post("/probe/enum").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"colors\":[\"RED\",\"GREEN\"]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("colors"));
+    }
+
+    @Test
+    @DisplayName("JSON sintaticamente inválido e tipo errado não-enum seguem no 400 genérico")
+    void malformedJsonStaysGeneric() throws Exception {
+        for (var body : new String[] {"{malformado", "{\"color\":"}) {
+            mockMvc.perform(post("/probe/enum").contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors").doesNotExist())
+                    .andExpect(jsonPath("$.detail")
+                            .value("Corpo da requisição ausente ou malformado."));
+        }
     }
 
     @Test

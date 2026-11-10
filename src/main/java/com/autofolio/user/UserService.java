@@ -27,10 +27,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Operações do usuário autenticado sobre a própria conta: consulta, slug, senha e desativação.
- * Toda operação exige conta ativa; JWT de conta inexistente ou desativada gera 401. As que usam
- * BCrypt (troca de senha e desativação) não são {@code @Transactional}: o hash roda sem conexão
- * de banco aberta (ADR-001 §4.3) e só a gravação, junto da revogação dos tokens, usa transação
- * explícita.
+ * A exigência de conta ativa é do {@code ActiveAccountValidator} (JWT de conta inexistente ou
+ * desativada já chega aqui como 401). A janela entre ele e o service só importa para as escritas
+ * no User (slug, senha, desativação), todas {@code UPDATE ... WHERE active = true}; as leituras
+ * ({@code me}) e a gravação do perfil não precisam dela. As operações que usam BCrypt (troca de
+ * senha e desativação) não são {@code @Transactional}: o hash roda sem conexão de banco aberta
+ * (ADR-001 §4.3) e só a gravação, junto da revogação dos tokens, usa transação explícita.
  */
 @Slf4j
 @Service
@@ -50,7 +52,7 @@ public class UserService {
      */
     @Transactional(readOnly = true)
     public UserMeResponse me(UUID userId) {
-        var user = requireActive(userId);
+        var user = loadUser(userId);
         var profile = userProfileRepository.findByUserId(userId)
                 .map(ProfileResponse::from)
                 .orElseGet(ProfileResponse::empty);
@@ -63,19 +65,25 @@ public class UserService {
      */
     @Transactional
     public SlugResponse updateSlug(UUID userId, UpdateSlugRequest request) {
-        var user = requireActive(userId);
+        var user = loadUser(userId);
         var slug = request.slug();
         if (!slug.equals(user.getSlug())) {
             if (userRepository.existsBySlugAndIdNot(slug, userId)) {
                 throw slugConflict(userId);
             }
-            user.setSlug(slug);
+            int updated;
             try {
-                // Flush aqui para que a corrida entre duas trocas vire 409 e não 500
-                userRepository.saveAndFlush(user);
+                // UPDATE condicional: conta desativada ou senha trocada depois do load não são
+                // sobrescritas, e a corrida entre duas trocas vira 409 e não 500
+                updated = userRepository.updateSlug(userId, slug, OffsetDateTime.now(clock));
             } catch (DataIntegrityViolationException e) {
                 throw slugConflict(userId);
             }
+            if (updated == 0) {
+                throw sessionLost(userId);
+            }
+            // O repositório limpou o contexto: user está desanexado, a troca não vira outro UPDATE
+            user.setSlug(slug);
             log.info("Slug alterado (userId={})", userId);
         }
         var grant = tokenService.issueAccessToken(user);
@@ -86,7 +94,7 @@ public class UserService {
      * Troca a senha após conferir a atual e revoga todos os refresh tokens do usuário.
      */
     public void changePassword(UUID userId, ChangePasswordRequest request) {
-        var user = requireActive(userId);
+        var user = loadUser(userId);
         confirmPassword(userId, user.getPassword(), request.currentPassword(),
                 "Troca de senha recusada: senha atual incorreta");
         var newHash = passwordEncoder.encode(request.newPassword());
@@ -104,7 +112,7 @@ public class UserService {
      * redefinição pendentes. E-mail e slug continuam reservados.
      */
     public void deactivate(UUID userId, DeleteAccountRequest request) {
-        var user = requireActive(userId);
+        var user = loadUser(userId);
         confirmPassword(userId, user.getPassword(), request.password(),
                 "Desativação de conta recusada: senha incorreta");
         var revoked = transactionTemplate.execute(status -> {
@@ -116,11 +124,12 @@ public class UserService {
         log.info("Conta desativada (userId={}, refreshTokensRevogados={})", userId, revoked);
     }
 
-    User requireActive(UUID userId) {
-        return userRepository.findByIdAndActiveTrue(userId).orElseThrow(() -> {
-            log.warn("Acesso recusado: conta inexistente ou desativada (userId={})", userId);
-            return new InvalidSessionException();
-        });
+    /**
+     * Carrega o usuário autenticado. A atividade da conta já foi verificada na autenticação;
+     * ausência aqui significa remoção entre a autenticação e o service.
+     */
+    User loadUser(UUID userId) {
+        return userRepository.findById(userId).orElseThrow(() -> sessionLost(userId));
     }
 
     private void confirmPassword(UUID userId, String hash, String rawPassword, String failure) {

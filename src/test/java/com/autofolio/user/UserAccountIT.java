@@ -2,7 +2,9 @@ package com.autofolio.user;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.after;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -14,11 +16,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.autofolio.AbstractPostgresIT;
 import com.autofolio.auth.PasswordResetMailer;
+import com.autofolio.auth.repository.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -27,6 +33,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -35,6 +42,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -55,14 +63,20 @@ class UserAccountIT extends AbstractPostgresIT {
     @Autowired
     private JdbcTemplate jdbc;
     @Autowired
+    private DataSource dataSource;
+    @Autowired
     private JwtDecoder jwtDecoder;
+    @SpyBean
+    private UserRepository userRepository;
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     @MockBean
     private PasswordResetMailer mailer;
 
     @BeforeEach
     void setUp() {
-        reset(mailer);
+        reset(mailer, userRepository);
         jdbc.update("DELETE FROM password_reset_tokens");
         jdbc.update("DELETE FROM refresh_tokens");
         jdbc.update("DELETE FROM user_profiles");
@@ -230,7 +244,13 @@ class UserAccountIT extends AbstractPostgresIT {
         // Não loga, não renova token e o access token antigo não abre /users/me nem /profile
         assertThat(login(PASSWORD)).isEqualTo(401);
         assertThat(refresh(refreshToken)).isEqualTo(401);
-        assertThat(me(token).getResponse().getStatus()).isEqualTo(401);
+        var rejected = me(token);
+        assertThat(rejected.getResponse().getStatus()).isEqualTo(401);
+        // Mesmo ProblemDetail do token inválido (checagem única na autenticação)
+        assertThat(rejected.getResponse().getContentType()).startsWith("application/problem+json");
+        assertThat(json(rejected).get("detail").asText())
+                .isEqualTo("Autenticação necessária ou token inválido.");
+        assertThat(json(rejected).has("requestId")).isTrue();
         assertThat(send(put("/api/v1/profile"), token, Map.of("bio", "x")).andReturn()
                 .getResponse().getStatus()).isEqualTo(401);
         // Segundo DELETE com o mesmo token: 401
@@ -281,5 +301,69 @@ class UserAccountIT extends AbstractPostgresIT {
                 .getStatus()).isEqualTo(401);
         assertThat(send(put("/api/v1/profile"), null, Map.of()).andReturn().getResponse()
                 .getStatus()).isEqualTo(401);
+    }
+
+    @Test
+    @DisplayName("Salvar a entidade User carregada antes de uma desativação/troca de senha não "
+            + "reativa a conta nem restaura o hash antigo (@DynamicUpdate)")
+    void shouldNotOverwriteActiveAndPasswordOnStaleSave() throws Exception {
+        register(EMAIL, SLUG);
+        var userId = Objects.requireNonNull(
+                jdbc.queryForObject("SELECT id FROM users", UUID.class),
+                "usuário do teste não existe");
+
+        transactionTemplate.executeWithoutResult(status -> {
+            var user = userRepository.findById(userId)
+                    .orElseThrow(() -> new IllegalStateException("usuário do teste não existe"));
+            user.setSlug("slug-novo");
+            // Operação concorrente (UPDATE direto, como changePassword e deactivate) depois do load
+            jdbc.update("UPDATE users SET active = false, password_hash = 'hash-novo'");
+            userRepository.saveAndFlush(user);
+        });
+
+        var row = jdbc.queryForMap("SELECT slug, active, password_hash FROM users");
+        assertThat(row.get("slug")).isEqualTo("slug-novo");
+        assertThat(row.get("active")).isEqualTo(false);
+        assertThat(row.get("password_hash")).isEqualTo("hash-novo");
+    }
+
+    @Test
+    @DisplayName("PATCH /slug: conta desativada entre o load e o UPDATE → 401, slug e senha "
+            + "intactos, conta continua inativa")
+    void shouldNotChangeSlugOfAccountDeactivatedInTheMeantime() throws Exception {
+        var token = register(EMAIL, SLUG).get("accessToken").asText();
+        var hashBefore = jdbc.queryForObject("SELECT password_hash FROM users", String.class);
+        // Desativação concorrente entre o loadUser e o UPDATE do slug: outra conexão, já
+        // commitada (na mesma transação ela seria desfeita junto com o 401)
+        doAnswer(invocation -> {
+            try (var connection = dataSource.getConnection();
+                    var statement = connection.createStatement()) {
+                statement.executeUpdate("UPDATE users SET active = false");
+            }
+            // O spy de repositório JPA não chama o método real; o slug novo está livre
+            return false;
+        }).when(userRepository).existsBySlugAndIdNot(anyString(), any());
+
+        var result = send(patch("/api/v1/users/me/slug"), token, Map.of("slug", "novo-slug"))
+                .andReturn();
+
+        assertThat(result.getResponse().getStatus()).isEqualTo(401);
+        var row = jdbc.queryForMap("SELECT slug, active, password_hash FROM users");
+        assertThat(row.get("slug")).isEqualTo(SLUG);
+        assertThat(row.get("active")).isEqualTo(false);
+        assertThat(row.get("password_hash")).isEqualTo(hashBefore);
+    }
+
+    @Test
+    @DisplayName("Bearer inválido em rota pública (docs do Swagger) não gera 401 (ADR-001 §3.2)")
+    void shouldIgnoreInvalidBearerOnPublicRoutes() throws Exception {
+        for (var path : new String[] {"/api-docs", "/swagger-ui.html", "/api/v1/portfolio/x"}) {
+            var status = mockMvc.perform(get(path).header("Authorization", "Bearer lixo"))
+                    .andReturn().getResponse().getStatus();
+            assertThat(status).as(path).isNotEqualTo(401);
+        }
+        // Rota privada segue exigindo token válido
+        assertThat(mockMvc.perform(get("/api/v1/users/me").header("Authorization", "Bearer lixo"))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
     }
 }

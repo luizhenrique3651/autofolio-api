@@ -1,5 +1,6 @@
 package com.autofolio.config;
 
+import com.autofolio.auth.security.AccountLookupUnavailableException;
 import com.autofolio.shared.exception.InvalidSessionException;
 import com.autofolio.shared.exception.ProblemDetails;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -8,6 +9,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.server.resource.BearerTokenError;
@@ -35,6 +37,13 @@ public class ProblemDetailAuthenticationEntryPoint implements AuthenticationEntr
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
                          AuthenticationException authException) throws IOException {
+        if (authException.getCause() instanceof AccountLookupUnavailableException) {
+            // Infraestrutura fora, não credencial ruim: 503 no contrato de erro (o validador já
+            // logou o ERROR com a causa)
+            write(request, response, HttpStatus.SERVICE_UNAVAILABLE, ProblemDetails
+                    .serviceUnavailable("Serviço temporariamente indisponível — tente novamente."));
+            return;
+        }
         delegate.commence(request, response, authException);
 
         // Mesma regra do delegate: BearerTokenError define o status (400 em invalid_request),
@@ -47,8 +56,14 @@ public class ProblemDetailAuthenticationEntryPoint implements AuthenticationEntr
                 ? ProblemDetails.badRequest("Requisição de autenticação inválida.")
                 : ProblemDetails.unauthorized(InvalidSessionException.MESSAGE);
 
+        write(request, response, status, problemDetail);
+    }
+
+    private void write(HttpServletRequest request, HttpServletResponse response,
+            HttpStatus status, ProblemDetail problemDetail) throws IOException {
         ProblemDetails.setPath(problemDetail, request.getRequestURI());
 
+        response.setStatus(status.value());
         // Mesmo Content-Type dos outros erros (sem charset); o Jackson escreve em UTF-8
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         objectMapper.writeValue(response.getOutputStream(), problemDetail);

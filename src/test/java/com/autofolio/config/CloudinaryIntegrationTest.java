@@ -6,6 +6,7 @@ import com.autofolio.auth.repository.PasswordResetTokenRepository;
 import com.autofolio.auth.repository.RefreshTokenRepository;
 import com.autofolio.auth.repository.UserProfileRepository;
 import com.autofolio.auth.repository.UserRepository;
+import com.autofolio.vehicle.repository.VehicleRepository;
 import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
 import java.io.IOException;
@@ -31,7 +32,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @ActiveProfiles("dev")
 @Tag("integration")
 @MockBean({UserRepository.class, UserProfileRepository.class, RefreshTokenRepository.class,
-        PasswordResetTokenRepository.class, TransactionTemplate.class})
+        PasswordResetTokenRepository.class, VehicleRepository.class, TransactionTemplate.class})
 public class CloudinaryIntegrationTest {
 
     @Autowired

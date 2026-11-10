@@ -14,12 +14,17 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.UpdateTimestamp;
 
 /**
- * Usuário (vendedor) da plataforma.
+ * Usuário (vendedor) da plataforma. {@code @DynamicUpdate}: o UPDATE grava só as colunas
+ * alteradas. Sem isso, salvar uma entidade carregada antes de uma troca de senha ou desativação
+ * (que usam UPDATE direto) sobrescreveria {@code password_hash} e {@code active} com o valor
+ * antigo, reativando a conta.
  */
 @Entity
+@DynamicUpdate
 @Table(name = "users")
 @Getter
 @Setter

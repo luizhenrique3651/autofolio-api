@@ -2,6 +2,7 @@ package com.autofolio.config;
 
 import com.autofolio.shared.web.RequestIdFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -17,6 +18,7 @@ import org.springframework.security.oauth2.server.resource.web.DefaultBearerToke
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -30,6 +32,15 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Import(FrontendConfig.class)
 @RequiredArgsConstructor
 public class SecurityConfig {
+
+    /**
+     * Rotas públicas: autorizadas sem token e que ignoram um Bearer inválido (ADR-001 §3.2).
+     * Fonte única do {@code permitAll} e do resolver de Bearer, para as listas não divergirem.
+     */
+    static final String[] PUBLIC_ROUTES = {
+        "/api/v1/auth/**", "/api/v1/portfolio/**", "/api-docs/**", "/swagger-ui/**",
+        "/swagger-ui.html"
+    };
 
     private final FrontendProperties frontend;
 
@@ -46,11 +57,7 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/**")
-                        .permitAll() // Rotas de login/registro públicas
-                        .requestMatchers("/api/v1/portfolio/**").permitAll() // Portfólio público
-                        .requestMatchers("/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
-                        .permitAll() // Documentação Swagger
+                        .requestMatchers(PUBLIC_ROUTES).permitAll() // Auth, portfólio e Swagger
                         .anyRequest().authenticated() // Qualquer outra rota exige autenticação
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
@@ -69,9 +76,8 @@ public class SecurityConfig {
      */
     private BearerTokenResolver publicRoutesAwareBearerTokenResolver() {
         var delegate = new DefaultBearerTokenResolver();
-        var publicRoutes = new OrRequestMatcher(
-                new AntPathRequestMatcher("/api/v1/auth/**"),
-                new AntPathRequestMatcher("/api/v1/portfolio/**"));
+        var publicRoutes = new OrRequestMatcher(Arrays.stream(PUBLIC_ROUTES)
+                .map(AntPathRequestMatcher::new).toArray(RequestMatcher[]::new));
         return request -> publicRoutes.matches(request) ? null : delegate.resolve(request);
     }
 

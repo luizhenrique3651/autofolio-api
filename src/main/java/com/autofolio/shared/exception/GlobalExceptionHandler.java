@@ -1,8 +1,13 @@
 package com.autofolio.shared.exception;
 
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.ElementKind;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -67,15 +72,39 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Converte violação de Bean Validation fora do corpo (ex.: parâmetros e services) em 400.
+     * Converte regra de validação contextual dos services (ex.: ano atual) em 400.
+     */
+    @ExceptionHandler(RequestValidationException.class)
+    public ProblemDetail handleRequestValidation(RequestValidationException ex) {
+        return validationProblem(ex.getErrors());
+    }
+
+    /**
+     * Converte violação de Bean Validation de <em>parâmetro</em> de método em 400. Violação de
+     * retorno de método ou de entidade (pre-persist do Hibernate) é bug nosso, não erro do
+     * cliente: vira 500 com log ERROR e stacktrace, sem o valor violado.
      */
     @ExceptionHandler(ConstraintViolationException.class)
     public ProblemDetail handleConstraintViolation(ConstraintViolationException ex) {
+        if (!ex.getConstraintViolations().stream().allMatch(GlobalExceptionHandler::isParameter)) {
+            log.error("Violação de Bean Validation fora dos parâmetros da requisição", ex);
+            return ProblemDetails.internalError("Erro interno — tente novamente.");
+        }
         var errors = ex.getConstraintViolations().stream()
                 .map(v -> new FieldValidationError(lastNode(v.getPropertyPath().toString()),
                         v.getMessage()))
                 .toList();
         return validationProblem(errors);
+    }
+
+    private static boolean isParameter(ConstraintViolation<?> violation) {
+        for (var node : violation.getPropertyPath()) {
+            if (node.getKind() == ElementKind.PARAMETER
+                    || node.getKind() == ElementKind.CROSS_PARAMETER) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Erros de campo com o field real; erros globais usam o nome do objeto (ou o do parâmetro)
@@ -192,15 +221,37 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 HttpStatus.BAD_REQUEST, request);
     }
 
-    // Mensagem genérica, sem expor detalhes do parser
+    // JSON sintaticamente inválido: mensagem genérica, sem expor detalhes do parser. Valor fora
+    // do enum: 400 com o campo e os valores aceitos (a mensagem é montada aqui, sem ecoar o valor
+    // enviado nem a mensagem do Jackson)
     @Override
     protected ResponseEntity<Object> handleHttpMessageNotReadable(
             @NonNull HttpMessageNotReadableException ex,
             @NonNull HttpHeaders headers,
             @NonNull HttpStatusCode status,
             @NonNull WebRequest request) {
+        if (ex.getCause() instanceof InvalidFormatException invalid
+                && invalid.getTargetType() != null && invalid.getTargetType().isEnum()) {
+            var accepted = Arrays.stream(invalid.getTargetType().getEnumConstants())
+                    .map(Object::toString).collect(Collectors.joining(", "));
+            var error = new FieldValidationError(fieldName(invalid),
+                    "Valor inválido. Valores aceitos: " + accepted + ".");
+            return handleExceptionInternal(ex, validationProblem(List.of(error)), headers,
+                    HttpStatus.BAD_REQUEST, request);
+        }
         var problemDetail = ProblemDetails.badRequest("Corpo da requisição ausente ou malformado.");
         return handleExceptionInternal(ex, problemDetail, headers, HttpStatus.BAD_REQUEST, request);
+    }
+
+    // Último nome de campo do caminho JSON (ignora índices de lista)
+    private static String fieldName(InvalidFormatException ex) {
+        var path = ex.getPath();
+        for (int i = path.size() - 1; i >= 0; i--) {
+            if (path.get(i).getFieldName() != null) {
+                return path.get(i).getFieldName();
+            }
+        }
+        return "body";
     }
 
     @Override

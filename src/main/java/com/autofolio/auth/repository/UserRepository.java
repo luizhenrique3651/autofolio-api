@@ -36,9 +36,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
 
     /**
-     * Busca o usuário pelo id apenas se a conta estiver ativa.
+     * Indica se existe conta ativa com o id. Consulta leve por chave primária, usada pelo
+     * validador do JWT a cada requisição autenticada.
      */
-    Optional<User> findByIdAndActiveTrue(UUID id);
+    boolean existsByIdAndActiveTrue(UUID id);
 
     /**
      * Atualiza o hash da senha de uma conta ativa sem sobrescrever os demais campos (a entidade
@@ -48,6 +49,17 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("update User u set u.password = :hash, u.updatedAt = :now "
             + "where u.id = :id and u.active = true")
     int updatePassword(@Param("id") UUID id, @Param("hash") String hash,
+            @Param("now") OffsetDateTime now);
+
+    /**
+     * Troca o slug de uma conta ativa sem sobrescrever os demais campos. Limpa o contexto de
+     * persistência (a entidade carregada fica desatualizada). Devolve 0 se a conta foi desativada
+     * no meio; viola a unique se outro usuário tomou o slug.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("update User u set u.slug = :slug, u.updatedAt = :now "
+            + "where u.id = :id and u.active = true")
+    int updateSlug(@Param("id") UUID id, @Param("slug") String slug,
             @Param("now") OffsetDateTime now);
 
     /**

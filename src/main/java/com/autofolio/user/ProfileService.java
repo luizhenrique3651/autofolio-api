@@ -37,7 +37,7 @@ public class ProfileService {
      */
     @Transactional
     public ProfileResponse update(UUID userId, UpdateProfileRequest request) {
-        var user = userService.requireActive(userId);
+        var user = userService.loadUser(userId);
         var profile = findOrNew(user);
 
         profile.setBio(request.bio());
@@ -58,7 +58,7 @@ public class ProfileService {
      * §4.1); só a gravação da URL usa transação. A foto anterior não é apagada do Cloudinary.
      */
     public ProfileResponse updatePhoto(UUID userId, MultipartFile file) {
-        var user = userService.requireActive(userId);
+        var user = userService.loadUser(userId);
         var content = readAndValidate(userId, file);
         var url = photoStorage.upload(userId, content);
         UserProfile saved;

@@ -4,10 +4,16 @@ spring:
 
   datasource:
     hikari:
+      # Timeouts explícitos (ADR-001 §4.2): o banco é consultado em toda requisição autenticada
+      # (ActiveAccountValidator); sem isso, banco fora custaria 30 s (padrão do Hikari) por
+      # requisição antes do 503. connection-timeout: espera por conexão do pool, em ms.
+      connection-timeout: 4000
       # pgjdbc: sem o "Detail: Key (coluna)=(valor)" nas mensagens de erro do servidor, que o
       # Hibernate logaria em ERROR com e-mail etc. (ADR-001 §1.6). Vale para todos os profiles
       data-source-properties:
         logServerErrorDetail: false
+        # pgjdbc: conexão TCP com o servidor, em segundos
+        connectTimeout: 4
   
   # Java 21 Virtual Threads Activation (Global)
   threads:
@@ -41,6 +47,10 @@ spring:
     date-format: yyyy-MM-dd'T'HH:mm:ss.SSSZ
     serialization:
       write-dates-as-timestamps: false
+    deserialization:
+      # "transmission": 1 não pode virar o enum de ordinal 1, e "km": 1.5 não pode ser truncado
+      fail-on-numbers-for-enums: true
+      accept-float-as-int: false
 
 # Tomcat: ao recusar um upload acima do limite, drena até 10 MB do corpo restante. Com o padrão
 # (2 MB) a conexão é derrubada no meio do envio e o cliente não recebe o 413
@@ -91,3 +101,8 @@ logging:
 # URL do frontend (CORS e link do e-mail de redefinição de senha); FRONTEND_URL vem do .env
 frontend:
   url: ${FRONTEND_URL:http://localhost:5173}
+
+# Fuso do negócio (vendedores no Brasil): regras que dependem da data civil, como o teto do ano de
+# fabricação, usam este fuso, não o UTC do Clock global
+business:
+  zone: America/Sao_Paulo

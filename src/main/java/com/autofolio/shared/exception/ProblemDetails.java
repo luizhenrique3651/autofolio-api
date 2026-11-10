@@ -23,18 +23,23 @@ public final class ProblemDetails {
     }
 
     // Status com título em PT-BR; os demais usam o reasonPhrase do status
-    private static final Map<HttpStatus, Label> LABELS = Map.of(
-            HttpStatus.BAD_REQUEST, new Label("Requisição Inválida", "bad-request"),
-            HttpStatus.UNAUTHORIZED, new Label("Não Autorizado", "unauthorized"),
-            HttpStatus.NOT_FOUND, new Label("Recurso Não Encontrado", "not-found"),
-            HttpStatus.METHOD_NOT_ALLOWED, new Label("Método Não Permitido", "method-not-allowed"),
-            HttpStatus.NOT_ACCEPTABLE, new Label("Formato Não Aceito", "not-acceptable"),
-            HttpStatus.CONFLICT, new Label("Conflito de Dados", "conflict"),
-            HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-            new Label("Tipo de Mídia Não Suportado", "unsupported-media-type"),
-            HttpStatus.PAYLOAD_TOO_LARGE, new Label("Arquivo Muito Grande", "payload-too-large"),
-            HttpStatus.INTERNAL_SERVER_ERROR, new Label("Erro Interno", "internal-error"),
-            HttpStatus.BAD_GATEWAY, new Label("Falha em Serviço Externo", "bad-gateway"));
+    private static final Map<HttpStatus, Label> LABELS = Map.ofEntries(
+            Map.entry(HttpStatus.BAD_REQUEST, new Label("Requisição Inválida", "bad-request")),
+            Map.entry(HttpStatus.UNAUTHORIZED, new Label("Não Autorizado", "unauthorized")),
+            Map.entry(HttpStatus.NOT_FOUND, new Label("Recurso Não Encontrado", "not-found")),
+            Map.entry(HttpStatus.METHOD_NOT_ALLOWED,
+                    new Label("Método Não Permitido", "method-not-allowed")),
+            Map.entry(HttpStatus.NOT_ACCEPTABLE, new Label("Formato Não Aceito", "not-acceptable")),
+            Map.entry(HttpStatus.CONFLICT, new Label("Conflito de Dados", "conflict")),
+            Map.entry(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    new Label("Tipo de Mídia Não Suportado", "unsupported-media-type")),
+            Map.entry(HttpStatus.PAYLOAD_TOO_LARGE,
+                    new Label("Arquivo Muito Grande", "payload-too-large")),
+            Map.entry(HttpStatus.INTERNAL_SERVER_ERROR,
+                    new Label("Erro Interno", "internal-error")),
+            Map.entry(HttpStatus.BAD_GATEWAY, new Label("Falha em Serviço Externo", "bad-gateway")),
+            Map.entry(HttpStatus.SERVICE_UNAVAILABLE,
+                    new Label("Serviço Indisponível", "service-unavailable")));
 
     private ProblemDetails() {
     }
@@ -79,6 +84,13 @@ public final class ProblemDetails {
      */
     public static ProblemDetail badGateway(String detail) {
         return build(HttpStatus.BAD_GATEWAY, detail);
+    }
+
+    /**
+     * Cria o ProblemDetail de 503.
+     */
+    public static ProblemDetail serviceUnavailable(String detail) {
+        return build(HttpStatus.SERVICE_UNAVAILABLE, detail);
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.autofolio.config;
 
 import java.time.Clock;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -8,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
  * Relógio injetável, para que testes de expiração sejam determinísticos.
  */
 @Configuration
+@EnableConfigurationProperties(BusinessProperties.class)
 public class ClockConfig {
 
     /**

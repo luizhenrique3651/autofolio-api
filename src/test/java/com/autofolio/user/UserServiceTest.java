@@ -76,14 +76,14 @@ class UserServiceTest {
                 .password("hash").slug("luiz-dev").build();
     }
 
-    private void activeUser() {
-        when(userRepository.findByIdAndActiveTrue(user.getId())).thenReturn(Optional.of(user));
+    private void existingUser() {
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
     }
 
     @Test
     @DisplayName("me: devolve usuário e perfil, sem o hash da senha")
     void shouldReturnMe() {
-        activeUser();
+        existingUser();
         var profile = UserProfile.builder().user(user).bio("Bio").city("SP")
                 .specialties(List.of("SUV")).expYears(3).build();
         when(userProfileRepository.findByUserId(user.getId())).thenReturn(Optional.of(profile));
@@ -100,7 +100,7 @@ class UserServiceTest {
     @Test
     @DisplayName("me: sem registro de perfil devolve perfil vazio")
     void shouldReturnEmptyProfile() {
-        activeUser();
+        existingUser();
         when(userProfileRepository.findByUserId(user.getId())).thenReturn(Optional.empty());
 
         var response = service.me(user.getId());
@@ -110,10 +110,10 @@ class UserServiceTest {
     }
 
     @Test
-    @DisplayName("me: conta inexistente ou desativada lança InvalidSessionException e loga o "
+    @DisplayName("me: usuário removido após a autenticação lança InvalidSessionException e loga o "
             + "userId")
     void shouldRejectInactiveOnMe(CapturedOutput output) {
-        when(userRepository.findByIdAndActiveTrue(user.getId())).thenReturn(Optional.empty());
+        when(userRepository.findById(user.getId())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.me(user.getId()))
                 .isInstanceOf(InvalidSessionException.class);
@@ -122,10 +122,12 @@ class UserServiceTest {
     }
 
     @Test
-    @DisplayName("Slug: grava, faz flush e devolve token novo")
+    @DisplayName("Slug: UPDATE condicional e token novo com o slug novo")
     void shouldUpdateSlug(CapturedOutput output) {
-        activeUser();
+        existingUser();
         when(userRepository.existsBySlugAndIdNot("novo-slug", user.getId())).thenReturn(false);
+        when(userRepository.updateSlug(user.getId(), "novo-slug", NOW.atOffset(ZoneOffset.UTC)))
+                .thenReturn(1);
         when(tokenService.issueAccessToken(user)).thenReturn(new AccessTokenGrant("jwt", 3600));
 
         var response = service.updateSlug(user.getId(), new UpdateSlugRequest("novo-slug"));
@@ -133,14 +135,14 @@ class UserServiceTest {
         assertThat(user.getSlug()).isEqualTo("novo-slug");
         assertThat(response.slug()).isEqualTo("novo-slug");
         assertThat(response.accessToken()).isEqualTo("jwt");
-        verify(userRepository).saveAndFlush(user);
+        verify(userRepository, never()).saveAndFlush(any());
         assertThat(output.getOut()).contains("Slug alterado (userId=" + user.getId());
     }
 
     @Test
     @DisplayName("Slug: o mesmo slug atual é idempotente, sem consulta de unicidade nem gravação")
     void shouldAcceptSameSlug() {
-        activeUser();
+        existingUser();
         when(tokenService.issueAccessToken(user)).thenReturn(new AccessTokenGrant("jwt", 3600));
 
         var response = service.updateSlug(user.getId(), new UpdateSlugRequest("luiz-dev"));
@@ -153,7 +155,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Slug: em uso por outro usuário lança DataConflictException")
     void shouldRejectSlugInUse(CapturedOutput output) {
-        activeUser();
+        existingUser();
         when(userRepository.existsBySlugAndIdNot("ocupado", user.getId())).thenReturn(true);
 
         assertThatThrownBy(() -> service.updateSlug(user.getId(), new UpdateSlugRequest("ocupado")))
@@ -168,9 +170,9 @@ class UserServiceTest {
     @Test
     @DisplayName("Slug: corrida detectada pela UNIQUE no flush vira DataConflictException")
     void shouldTurnUniqueViolationIntoConflict() {
-        activeUser();
+        existingUser();
         when(userRepository.existsBySlugAndIdNot("corrida", user.getId())).thenReturn(false);
-        when(userRepository.saveAndFlush(user))
+        when(userRepository.updateSlug(Mockito.eq(user.getId()), Mockito.eq("corrida"), any()))
                 .thenThrow(new DataIntegrityViolationException("uk_slug"));
 
         assertThatThrownBy(() -> service.updateSlug(user.getId(), new UpdateSlugRequest("corrida")))
@@ -179,9 +181,27 @@ class UserServiceTest {
     }
 
     @Test
+    @DisplayName("Slug: conta desativada entre o load e o UPDATE (0 linhas) lança 401 sem emitir "
+            + "token")
+    void shouldRejectSlugChangeOfAccountDeactivatedInTheMeantime(CapturedOutput output) {
+        existingUser();
+        when(userRepository.existsBySlugAndIdNot("novo-slug", user.getId())).thenReturn(false);
+        when(userRepository.updateSlug(Mockito.eq(user.getId()), Mockito.eq("novo-slug"), any()))
+                .thenReturn(0);
+
+        assertThatThrownBy(() -> service.updateSlug(user.getId(),
+                new UpdateSlugRequest("novo-slug")))
+                .isInstanceOf(InvalidSessionException.class);
+
+        assertThat(user.getSlug()).isEqualTo("luiz-dev");
+        verifyNoInteractions(tokenService);
+        assertThat(output.getOut()).contains("userId=" + user.getId());
+    }
+
+    @Test
     @DisplayName("Senha: confere a atual, grava o hash novo e revoga os refresh tokens")
     void shouldChangePassword(CapturedOutput output) {
-        activeUser();
+        existingUser();
         when(passwordEncoder.matches("SenhaAtual1", "hash")).thenReturn(true);
         when(passwordEncoder.encode("SenhaNova1")).thenReturn("hash-novo");
         when(userRepository.updatePassword(Mockito.eq(user.getId()), Mockito.eq("hash-novo"),
@@ -203,7 +223,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Senha: atual incorreta lança InvalidCredentialsException e não grava nada")
     void shouldRejectWrongCurrentPassword(CapturedOutput output) {
-        activeUser();
+        existingUser();
         when(passwordEncoder.matches("errada", "hash")).thenReturn(false);
 
         assertThatThrownBy(() -> service.changePassword(user.getId(),
@@ -219,7 +239,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Senha: conta desativada entre leitura e gravação lança 401")
     void shouldRejectChangePasswordWhenDeactivatedMeanwhile(CapturedOutput output) {
-        activeUser();
+        existingUser();
         when(passwordEncoder.matches("SenhaAtual1", "hash")).thenReturn(true);
         when(passwordEncoder.encode("SenhaNova1")).thenReturn("hash-novo");
         when(userRepository.updatePassword(Mockito.eq(user.getId()), anyString(), any()))
@@ -232,9 +252,9 @@ class UserServiceTest {
     }
 
     @Test
-    @DisplayName("Senha: conta desativada lança InvalidSessionException antes de conferir a senha")
-    void shouldRejectChangePasswordOfInactiveUser() {
-        when(userRepository.findByIdAndActiveTrue(user.getId())).thenReturn(Optional.empty());
+    @DisplayName("Senha: usuário removido lança InvalidSessionException antes de conferir a senha")
+    void shouldRejectChangePasswordOfInexistingUser() {
+        when(userRepository.findById(user.getId())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.changePassword(user.getId(),
                 new ChangePasswordRequest("a", "SenhaNova1")))
@@ -245,7 +265,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Desativar: confere a senha, marca inativa e revoga refresh e reset tokens")
     void shouldDeactivate(CapturedOutput output) {
-        activeUser();
+        existingUser();
         when(passwordEncoder.matches("SenhaAtual1", "hash")).thenReturn(true);
         when(userRepository.deactivate(Mockito.eq(user.getId()), any())).thenReturn(1);
         when(sessionRevoker.revokeAll(user.getId())).thenReturn(1);
@@ -261,7 +281,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Desativar: senha incorreta lança InvalidCredentialsException e não desativa")
     void shouldRejectDeactivateWithWrongPassword() {
-        activeUser();
+        existingUser();
         when(passwordEncoder.matches("errada", "hash")).thenReturn(false);
 
         assertThatThrownBy(() -> service.deactivate(user.getId(),
@@ -275,7 +295,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Desativar: conta já desativada no meio lança InvalidSessionException")
     void shouldRejectDeactivateWhenAlreadyInactive(CapturedOutput output) {
-        activeUser();
+        existingUser();
         when(passwordEncoder.matches("SenhaAtual1", "hash")).thenReturn(true);
         when(userRepository.deactivate(Mockito.eq(user.getId()), any())).thenReturn(0);
 

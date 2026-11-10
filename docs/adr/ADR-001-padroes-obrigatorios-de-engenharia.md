@@ -30,7 +30,7 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
 5. **Todo `ProblemDetail` traz `requestId`**, além de `timestamp`.
 6. **Log nunca contém token, hash completo, senha ou e-mail.** Identifique pelo `userId`. Para token, use no máximo um prefixo do hash. O datasource usa `logServerErrorDetail=false` (pgjdbc não inclui `Detail: Key (coluna)=(valor)` nas mensagens, que o Hibernate logaria em ERROR), e o logger de bind (`BasicBinder`/TRACE) é proibido em qualquer profile.
 7. **Falha esperada de dependência externa** (ex.: SMTP) sai em `ERROR`, com `userId`, tipo da exceção e tipo da causa raiz, sem a mensagem quando ela puder conter dado pessoal. A stacktrace completa vai para `DEBUG`.
-8. **Falha inesperada** sai em `ERROR` com stacktrace, **uma única vez**. Quem relança não loga a stacktrace; ela fica no handler global.
+8. **Falha inesperada** sai em `ERROR` com stacktrace, **uma única vez**. Quem relança não loga a stacktrace; ela fica no handler global. As linhas `ERROR` do `SqlExceptionHelper` (driver, só SQLState e mensagem, sem stacktrace) não contam como essa "única vez"; o `ERROR` com contexto (`userId`) é o nosso. Banco indisponível é falha esperada de dependência (§1.7): 1 linha `ERROR` sem stacktrace.
 9. **O catch-all 500** loga o erro e relança `AccessDeniedException` e `AuthenticationException`, para não transformá-las em 500.
 10. **`orElseThrow()` sem argumento é proibido** em código de produção. A exceção precisa explicar o que faltou.
 
@@ -43,7 +43,7 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
    - mesmo 401 para e-mail inexistente e senha errada, inclusive no tempo de resposta;
    - `forgot-password` responde sempre 202;
    - mesma resposta para token inexistente, expirado ou revogado.
-5. **`DataIntegrityViolationException` vira 409 genérico**, sem nome de constraint nem SQL; o log WARN leva os tipos da exceção e da causa raiz, o nome da constraint e a origem (1º frame `com.autofolio`); a stacktrace, que traz o SQL com valores, só vai para DEBUG. **Recurso inexistente ou de outro usuário** lança `EntityNotFoundException` (404). **O 500** responde "Erro interno — tente novamente.".
+5. **`DataIntegrityViolationException` vira 409 genérico**, sem nome de constraint nem SQL; o log WARN leva os tipos da exceção e da causa raiz, o nome da constraint e a origem (1º frame `com.autofolio`); a stacktrace, que traz o SQL com valores, só vai para DEBUG. **Recurso inexistente ou de outro usuário** lança `EntityNotFoundException` (404); o `getReferenceById` não é usado (a `jakarta.persistence.EntityNotFoundException` dele não tem mapeamento: referencie o dono por id, como no `Vehicle`). **`ConstraintViolationException`** só vira 400 quando a violação é de parâmetro de método; de retorno ou de entidade (pre-persist) é bug nosso e vira 500 com log ERROR. **Regra de validação que depende de contexto** (ex.: ano atual) lança `RequestValidationException` (400 com `errors`). **Falha de infraestrutura na autenticação** (banco fora ao checar a conta) responde 503 pelo entry point; o validador registra 1 ERROR com `userId` e os tipos da exceção, sem stacktrace nem mensagem, e a stacktrace vai para DEBUG (§1.8). **Enum inválido no JSON** dá 400 com `errors` (campo e valores aceitos); JSON sintaticamente inválido segue genérico. **O 500** responde "Erro interno — tente novamente.".
 6. **O `detail` dos erros do Spring MVC é traduzido em `messages.properties`** (`problemDetail.<FQCN>`), sem mapear exceção a exceção no handler.
 7. **5xx gerado pelo Spring MVC** (ex.: `HttpMessageNotWritableException`) também sai em `ERROR` com stacktrace, uma vez, no `handleExceptionInternal`.
 
@@ -171,7 +171,7 @@ A Opção C troca um pequeno custo de manutenção por previsibilidade. Em tasks
 12. [ ] Rate limit no forgot-password e limites do executor `@Async` (hardening).
 13. [ ] Padronizar a configuração tipada: migrar `JwtConfig` e `CloudinaryConfig` de `@Value` para `@ConfigurationProperties` com validação de obrigatoriedade e valor em branco, como já faz o `FrontendProperties`.
 14. [ ] Fixar a versão do Java no build (`maven-enforcer-plugin` com `requireJavaVersion [21,22)`). O Maven do Homebrew passou a rodar em Java 26, e o Byte Buddy do Mockito não o suporta, o que quebra os testes com `@MockBean`.
-15. [ ] **Obrigatório antes da AF-016:** centralizar a checagem de conta ativa (`active=true`) num único ponto da autenticação (`JwtAuthenticationConverter` ou validator no `SecurityConfig`), em vez de cada service; o portfólio público deve filtrar `active=true`.
+15. [x] Centralizar a checagem de conta ativa (`active=true`) num único ponto da autenticação (resolvido na AF-016: `ActiveAccountValidator` no `JwtDecoder`, uma consulta `exists` por PK por requisição autenticada, sem cache). **Pendente para a Sprint 3:** o portfólio público deve filtrar `active=true`.
 16. [ ] Rate limit nos endpoints que confirmam senha (`DELETE /users/me`, `PATCH /users/me/password`), junto com o do login.
 17. [ ] Endpoint de reativação de conta e anonimização LGPD (Sprint 4, clientes/LGPD).
 18. [ ] Configurar `-Xlint:all` (e `showWarnings`) nos `compilerArgs` do `maven-compiler-plugin`, para que a §7.2 seja verificada no build e não só pelo revisor de warnings.
@@ -179,3 +179,6 @@ A Opção C troca um pequeno custo de manutenção por previsibilidade. Em tasks
 20. [ ] Limitar o corpo das requisições no Nginx (`client_max_body_size` ~6 MB) na task de deploy (AF-042): o `server.tomcat.max-swallow-size` de 10 MB drena até 10 MB de requisição não autenticada.
 21. [ ] Limpeza das fotos antigas de perfil no Cloudinary (o upload novo não apaga a anterior, conforme o card da AF-014).
 22. [ ] Limitar uploads concorrentes por usuário.
+23. [ ] Migration futura: `NOT NULL` em `vehicles.status` (a V1 só tem `DEFAULT 'DRAFT'`).
+24. [ ] Sprint 3: índice `(user_id, status)` em `vehicles` para a listagem de veículos do vendedor.
+25. [ ] Task de deploy (AF-042): configurar `server.forward-headers-strategy` (framework ou native) para que o header `Location` e as URLs geradas usem host e scheme públicos atrás do Nginx/TLS.

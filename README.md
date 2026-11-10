@@ -100,6 +100,14 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
 
 As rotas privadas exigem `Authorization: Bearer <accessToken>`.
 
+### Veículos (`/api/v1/vehicles`, autenticada)
+
+| Método | Rota | Descrição | Respostas |
+|---|---|---|---|
+| `POST` | `/` | Cadastra veículo do usuário do JWT, sempre com `status: DRAFT` (um `status` no corpo é ignorado); devolve o veículo completo | `201`, `400`, `401` |
+
+Obrigatórios: `brand`, `model`, `yearFab` (1900 até o ano atual), `yearMod` (igual a `yearFab` ou o seguinte), `km` (≥ 0), `color`, `engine`, `transmission` (`MANUAL`, `AUTOMATIC`, `CVT`), `fuel` (`GASOLINE`, `ETHANOL`, `FLEX`, `DIESEL`, `ELECTRIC`, `HYBRID`, `CNG`), `condition` (`EXCELLENT`, `GOOD`, `REGULAR`) e `askingPrice` (> 0, até 2 casas). Opcional: `description`.
+
 ### Monitoramento
 
 | Rota | Observação |
@@ -127,7 +135,7 @@ Todo erro responde `application/problem+json`:
 
 - `error` é o reason phrase HTTP e `path` a URI da requisição (também no 401 do resource server).
 - 400 de validação traz `errors`, lista de `{ "field": "email", "message": "..." }` (corpo, parâmetros e `ConstraintViolation`).
-- 404 (`EntityNotFoundException`: inexistente ou de outro usuário), 409 (`DataConflictException` e `DataIntegrityViolationException`, sempre genérico: sem constraint nem SQL) e 500 (`"Erro interno — tente novamente."`).
+- 404 (`EntityNotFoundException`: inexistente ou de outro usuário), 409 (`DataConflictException` e `DataIntegrityViolationException`, sempre genérico: sem constraint nem SQL) 500 (`"Erro interno — tente novamente."`) e 503 (banco indisponível ao validar a conta na autenticação). Enum inválido no corpo dá 400 com `errors` indicando o campo e os valores aceitos.
 - O `detail` dos erros do Spring (parte ausente, tipo não suportado...) vem em português de `messages.properties`.
 - 404, 405, 406 e 415 seguem o mesmo formato, com `title` em português.
 - **`X-Request-Id`**: toda resposta devolve o header. O cliente pode enviar o próprio id (`[A-Za-z0-9._-]{1,64}`); caso contrário, a API gera um UUID. O mesmo id aparece no corpo dos erros (`requestId`) e em **todas as linhas de log** (`%X{requestId}`), inclusive nas tarefas `@Async`. Ao reportar um problema, informe esse id. O CORS libera o envio e a leitura do header pelo navegador (`allowedHeaders`/`exposedHeaders`).
@@ -144,6 +152,8 @@ Todo erro responde `application/problem+json`:
 - **Logs sem dados sensíveis**: nunca registram token, hash completo, senha ou e-mail. Falhas são logadas com `userId` e tipo da exceção.
 - **CORS** liberado apenas para `FRONTEND_URL`. CSRF desabilitado (API stateless).
 
+- **Conta ativa**: o `JwtDecoder` valida assinatura, expiração e, via `ActiveAccountValidator`, se a conta existe e está ativa (uma consulta por PK por requisição autenticada). Token de conta desativada responde o mesmo 401 do token inválido.
+
 Rotas públicas: `/api/v1/auth/**`, `/api/v1/portfolio/**` e a documentação Swagger. Todo o resto exige JWT.
 
 ---
@@ -158,6 +168,8 @@ PostgreSQL com migrations em `src/main/resources/db/migration`:
 | `V2__create_refresh_tokens.sql` | Tabela `refresh_tokens` |
 | `V3__create_password_reset_tokens.sql` | Tabela `password_reset_tokens` |
 | `V4__hash_password_reset_tokens.sql` | Token de redefinição passa a ser armazenado como hash (`token_hash`) |
+| `V5__add_user_active_and_profile_specialties.sql` | `users.active` (soft delete) e `user_profiles.specialties` |
+| `V6__add_vehicle_details.sql` | `vehicles`: cor, motor, câmbio e combustível (ENUMs `transmission_type` e `fuel_type`) e CHECKs de ano, km e preço |
 
 O Hibernate roda com `ddl-auto: validate`: quem altera o schema é sempre o Flyway.
 

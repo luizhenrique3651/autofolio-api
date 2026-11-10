@@ -2,6 +2,7 @@ package com.autofolio.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.autofolio.auth.security.AccountLookupUnavailableException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.DisplayName;
@@ -13,6 +14,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.server.resource.BearerTokenError;
 import org.springframework.security.oauth2.server.resource.BearerTokenErrorCodes;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 
 @DisplayName("Testes Unitários - ProblemDetailAuthenticationEntryPoint")
 class ProblemDetailAuthenticationEntryPointTest {
@@ -86,5 +88,28 @@ class ProblemDetailAuthenticationEntryPointTest {
         assertThat(response.getStatus()).isEqualTo(401);
         assertThat(json.has("instance")).isFalse();
         assertThat(json.get("path").asText()).isEqualTo("/api/v1/a b");
+    }
+
+    @Test
+    @DisplayName("Falha de infraestrutura na autenticação gera 503 ProblemDetail, não 401")
+    void shouldReturn503WhenAccountLookupIsUnavailable() throws Exception {
+        var response = new MockHttpServletResponse();
+        var request = new MockHttpServletRequest("GET", "/api/v1/vehicles");
+        var cause = new AccountLookupUnavailableException(new RuntimeException("banco fora"));
+
+        entryPoint.commence(request, response,
+                new InvalidBearerTokenException(cause.getMessage(), cause));
+
+        var raw = response.getContentAsString(StandardCharsets.UTF_8);
+        var json = objectMapper.readTree(raw);
+        assertThat(response.getStatus()).isEqualTo(503);
+        assertThat(response.getContentType()).contains("application/problem+json");
+        assertThat(response.getHeader("WWW-Authenticate")).isNull();
+        assertThat(json.get("status").asInt()).isEqualTo(503);
+        assertThat(json.get("title").asText()).isEqualTo("Serviço Indisponível");
+        assertThat(json.get("type").asText())
+                .isEqualTo("https://autofolio.com/errors/service-unavailable");
+        assertThat(json.get("path").asText()).isEqualTo("/api/v1/vehicles");
+        assertThat(raw).doesNotContain("banco fora");
     }
 }
