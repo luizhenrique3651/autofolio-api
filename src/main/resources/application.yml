@@ -10,6 +10,12 @@ spring:
   jpa:
     open-in-view: false
 
+  # Upload multipart (foto de perfil): 5 MB por arquivo; excedente vira 413 em ProblemDetail
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
   # SMTP: defaults de dev (SMTP local); o profile prod exige as variáveis MAIL_*
   mail:
     host: ${MAIL_HOST:localhost}
@@ -28,6 +34,12 @@ spring:
     date-format: yyyy-MM-dd'T'HH:mm:ss.SSSZ
     serialization:
       write-dates-as-timestamps: false
+
+# Tomcat: ao recusar um upload acima do limite, drena até 10 MB do corpo restante. Com o padrão
+# (2 MB) a conexão é derrubada no meio do envio e o cliente não recebe o 413
+server:
+  tomcat:
+    max-swallow-size: 10MB
 
 # Monitoring & Health
 management:
@@ -49,6 +61,11 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+# Cloudinary: timeouts explícitos (ADR-001 §4.2); as credenciais ficam nos profiles
+cloudinary:
+  connect-timeout: 5s
+  read-timeout: 15s
 
 # Security (JWT) - chave HS256 (mínimo 32 caracteres) vinda do ambiente
 jwt:

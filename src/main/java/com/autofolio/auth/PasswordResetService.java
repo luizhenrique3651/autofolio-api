@@ -3,6 +3,7 @@ package com.autofolio.auth;
 import com.autofolio.auth.domain.PasswordResetToken;
 import com.autofolio.auth.repository.PasswordResetTokenRepository;
 import com.autofolio.auth.repository.UserRepository;
+import com.autofolio.shared.exception.ExceptionSummary;
 import com.autofolio.shared.exception.InvalidResetTokenException;
 import com.autofolio.shared.security.TokenHasher;
 import java.time.Clock;
@@ -11,7 +12,6 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.NestedExceptionUtils;
 import org.springframework.mail.MailException;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -62,7 +62,7 @@ public class PasswordResetService {
                 tokenRepository.invalidateUnusedByUserId(userId);
             } catch (RuntimeException e) {
                 log.warn("Falha na limpeza de tokens de redefinição (userId={}): {}", userId,
-                        describe(e));
+                        ExceptionSummary.describe(e));
             }
 
             // O banco guarda só o hash; o token cru vai apenas no e-mail
@@ -79,7 +79,7 @@ public class PasswordResetService {
             // (exceção e causa raiz). A stacktrace completa vai para DEBUG, que só aparece em dev
             // (em prod o nível é INFO).
             log.error("Falha ao enviar e-mail de redefinição de senha (userId={}): {}", userId,
-                    describe(e));
+                    ExceptionSummary.describe(e));
             log.debug("Stacktrace da falha de envio (userId={})", userId, e);
         } catch (Exception e) {
             log.error("Falha ao processar redefinição de senha (userId={})", userId, e);
@@ -116,16 +116,9 @@ public class PasswordResetService {
             log.info("Senha redefinida (userId={}, refreshTokensRevogados={})", userId, revoked);
         } catch (RuntimeException e) {
             // Sem stacktrace: o catch-all do GlobalExceptionHandler já a registra
-            log.error("Falha ao redefinir senha (userId={}): {}", userId, describe(e));
+            log.error("Falha ao redefinir senha (userId={}): {}", userId,
+                    ExceptionSummary.describe(e));
             throw e;
         }
-    }
-
-    // Só os tipos (exceção e causa raiz): a mensagem pode trazer PII e a stacktrace fica a cargo
-    // de quem trata a exceção
-    private static String describe(Throwable e) {
-        var rootCause = NestedExceptionUtils.getMostSpecificCause(e);
-        return e.getClass().getSimpleName()
-                + " (causa raiz: " + rootCause.getClass().getSimpleName() + ")";
     }
 }

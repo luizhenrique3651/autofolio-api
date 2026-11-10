@@ -18,6 +18,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
@@ -65,6 +66,35 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(InvalidResetTokenException.class)
     public ProblemDetail handleInvalidResetTokenException(InvalidResetTokenException ex) {
         return ProblemDetails.badRequest(ex.getMessage());
+    }
+
+    /**
+     * Converte imagem inválida (formato ou conteúdo) em 400.
+     */
+    @ExceptionHandler(InvalidImageException.class)
+    public ProblemDetail handleInvalidImageException(InvalidImageException ex) {
+        return ProblemDetails.badRequest(ex.getMessage());
+    }
+
+    /**
+     * Converte falha do serviço de mídia em 502. O log ERROR com a causa já saiu onde a falha
+     * foi capturada (ADR-001 §1.8: não loga de novo aqui).
+     */
+    @ExceptionHandler(MediaStorageException.class)
+    public ProblemDetail handleMediaStorageException(MediaStorageException ex) {
+        return ProblemDetails.badGateway(ex.getMessage());
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(
+            @NonNull MaxUploadSizeExceededException ex,
+            @NonNull HttpHeaders headers,
+            @NonNull HttpStatusCode status,
+            @NonNull WebRequest request) {
+        var problemDetail = ProblemDetails.payloadTooLarge(
+                "O arquivo excede o tamanho máximo permitido.");
+        return handleExceptionInternal(ex, problemDetail, headers, HttpStatus.PAYLOAD_TOO_LARGE,
+                request);
     }
 
     @Override

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -18,10 +19,13 @@ import com.autofolio.config.SecurityConfig;
 import com.autofolio.shared.exception.DataConflictException;
 import com.autofolio.shared.exception.GlobalExceptionHandler;
 import com.autofolio.shared.exception.InvalidCredentialsException;
+import com.autofolio.shared.exception.InvalidImageException;
 import com.autofolio.shared.exception.InvalidSessionException;
+import com.autofolio.shared.exception.MediaStorageException;
 import com.autofolio.user.dto.ProfileResponse;
 import com.autofolio.user.dto.SlugResponse;
 import com.autofolio.user.dto.UserMeResponse;
+import java.io.IOException;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -34,9 +38,11 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @WebMvcTest({UserController.class, ProfileController.class})
 @Import({SecurityConfig.class, GlobalExceptionHandler.class})
@@ -45,6 +51,7 @@ class UserControllerTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final String JSON = MediaType.APPLICATION_JSON_VALUE;
+    private static final MediaType PROBLEM_JSON = MediaType.APPLICATION_PROBLEM_JSON;
 
     @Autowired
     private MockMvc mockMvc;
@@ -245,5 +252,80 @@ class UserControllerTest {
         mockMvc.perform(delete("/api/v1/users/me").with(auth()).contentType(JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST /profile/photo: 200 com o perfil e a photoUrl")
+    void shouldUploadPhoto() throws Exception {
+        var file = new MockMultipartFile("file", "foto.png", "image/png", new byte[] {1});
+        when(profileService.updatePhoto(USER_ID, file)).thenReturn(new ProfileResponse(null, null,
+                null, "https://res.cloudinary.com/x/a.png", List.of(), 0));
+
+        mockMvc.perform(multipart("/api/v1/profile/photo").file(file).with(auth()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.photoUrl").value("https://res.cloudinary.com/x/a.png"));
+    }
+
+    @Test
+    @DisplayName("POST /profile/photo: 400 quando o service recusa o conteúdo")
+    void shouldReturn400ForInvalidImage() throws Exception {
+        var file = new MockMultipartFile("file", "foto.gif", "image/gif", new byte[] {1});
+        when(profileService.updatePhoto(USER_ID, file))
+                .thenThrow(new InvalidImageException("Formato inválido"));
+
+        mockMvc.perform(multipart("/api/v1/profile/photo").file(file).with(auth()))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Formato inválido"));
+    }
+
+    @Test
+    @DisplayName("POST /profile/photo: 400 quando a parte 'file' não vem")
+    void shouldReturn400WhenFilePartIsMissing() throws Exception {
+        mockMvc.perform(multipart("/api/v1/profile/photo").with(auth()))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON));
+        verifyNoInteractions(profileService);
+    }
+
+    @Test
+    @DisplayName("POST /profile/photo: 413 em ProblemDetail quando excede o limite")
+    void shouldReturn413WhenTooLarge() throws Exception {
+        var file = new MockMultipartFile("file", "foto.png", "image/png", new byte[] {1});
+        when(profileService.updatePhoto(USER_ID, file))
+                .thenThrow(new MaxUploadSizeExceededException(5 * 1024 * 1024));
+
+        mockMvc.perform(multipart("/api/v1/profile/photo").file(file).with(auth()))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(413))
+                .andExpect(jsonPath("$.title").value("Arquivo Muito Grande"))
+                .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    @DisplayName("POST /profile/photo: 502 em ProblemDetail quando o Cloudinary falha")
+    void shouldReturn502WhenStorageFails() throws Exception {
+        var file = new MockMultipartFile("file", "foto.png", "image/png", new byte[] {1});
+        when(profileService.updatePhoto(USER_ID, file))
+                .thenThrow(new MediaStorageException("Tente novamente", new IOException("x")));
+
+        mockMvc.perform(multipart("/api/v1/profile/photo").file(file).with(auth()))
+                .andExpect(status().isBadGateway())
+                .andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+                .andExpect(jsonPath("$.detail").value("Tente novamente"));
+    }
+
+    @Test
+    @DisplayName("POST /profile/photo: 401 sem token e com conta desativada")
+    void shouldReturn401ForPhoto() throws Exception {
+        var file = new MockMultipartFile("file", "foto.png", "image/png", new byte[] {1});
+
+        mockMvc.perform(multipart("/api/v1/profile/photo").file(file))
+                .andExpect(status().isUnauthorized());
+
+        when(profileService.updatePhoto(USER_ID, file)).thenThrow(new InvalidSessionException());
+        mockMvc.perform(multipart("/api/v1/profile/photo").file(file).with(auth()))
+                .andExpect(status().isUnauthorized());
     }
 }

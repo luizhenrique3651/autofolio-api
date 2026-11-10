@@ -164,7 +164,7 @@ A Opção C troca um pequeno custo de manutenção por previsibilidade. Em tasks
 8. [ ] Invalidar o access token após a redefinição de senha (blacklist ou versionamento de token).
 9. [ ] Liberar `/actuator/health` para monitoramento externo (AF-042/AF-046).
 10. [ ] `detail` dos erros do Spring em português via `messages.properties` (`problemDetail.<FQCN>`).
-11. [ ] Tipar o `Map` cru do `CloudinaryConfig`.
+11. [x] Tipar o `Map` cru do `CloudinaryConfig` (resolvido na AF-014: cast isolado com `@SuppressWarnings` pontual).
 12. [ ] Rate limit no forgot-password e limites do executor `@Async` (hardening).
 13. [ ] Padronizar a configuração tipada: migrar `JwtConfig` e `CloudinaryConfig` de `@Value` para `@ConfigurationProperties` com validação de obrigatoriedade e valor em branco, como já faz o `FrontendProperties`.
 14. [ ] Fixar a versão do Java no build (`maven-enforcer-plugin` com `requireJavaVersion [21,22)`). O Maven do Homebrew passou a rodar em Java 26, e o Byte Buddy do Mockito não o suporta, o que quebra os testes com `@MockBean`.
@@ -172,3 +172,7 @@ A Opção C troca um pequeno custo de manutenção por previsibilidade. Em tasks
 16. [ ] Rate limit nos endpoints que confirmam senha (`DELETE /users/me`, `PATCH /users/me/password`), junto com o do login.
 17. [ ] Endpoint de reativação de conta e anonimização LGPD (Sprint 4, clientes/LGPD).
 18. [ ] Configurar `-Xlint:all` (e `showWarnings`) nos `compilerArgs` do `maven-compiler-plugin`, para que a §7.2 seja verificada no build e não só pelo revisor de warnings.
+19. [ ] Retry com backoff no upload ao Cloudinary (Spring Retry, recomendado pela skill de DevOps). Dependência nova: aguarda aprovação do dono do repositório (§5.5).
+20. [ ] Limitar o corpo das requisições no Nginx (`client_max_body_size` ~6 MB) na task de deploy (AF-042): o `server.tomcat.max-swallow-size` de 10 MB drena até 10 MB de requisição não autenticada.
+21. [ ] Limpeza das fotos antigas de perfil no Cloudinary (o upload novo não apaga a anterior, conforme o card da AF-014).
+22. [ ] Limitar uploads concorrentes por usuário.

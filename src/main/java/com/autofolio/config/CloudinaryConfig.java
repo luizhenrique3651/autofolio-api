@@ -4,6 +4,7 @@ import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -12,6 +13,7 @@ import org.springframework.context.annotation.Configuration;
  * Mapeia as credenciais do ambiente e disponibiliza o bean para injeção de dependência.
  */
 @Configuration
+@EnableConfigurationProperties(CloudinaryProperties.class)
 public class CloudinaryConfig {
 
     @Value("${cloudinary.cloud-name}")
@@ -28,7 +30,9 @@ public class CloudinaryConfig {
      */
     @Bean
     public Cloudinary cloudinary() {
-        Map<String, String> config = ObjectUtils.asMap(
+        // ObjectUtils.asMap devolve Map cru; o cast é seguro (chaves String, valores Object)
+        @SuppressWarnings("unchecked")
+        Map<String, Object> config = ObjectUtils.asMap(
                 "cloud_name", cloudName,
                 "api_key", apiKey,
                 "api_secret", apiSecret,

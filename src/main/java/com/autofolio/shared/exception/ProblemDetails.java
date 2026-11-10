@@ -30,7 +30,9 @@ public final class ProblemDetails {
             HttpStatus.CONFLICT, new Label("Conflito de Dados", "conflict"),
             HttpStatus.UNSUPPORTED_MEDIA_TYPE,
             new Label("Tipo de Mídia Não Suportado", "unsupported-media-type"),
-            HttpStatus.INTERNAL_SERVER_ERROR, new Label("Erro Interno", "internal-error"));
+            HttpStatus.PAYLOAD_TOO_LARGE, new Label("Arquivo Muito Grande", "payload-too-large"),
+            HttpStatus.INTERNAL_SERVER_ERROR, new Label("Erro Interno", "internal-error"),
+            HttpStatus.BAD_GATEWAY, new Label("Falha em Serviço Externo", "bad-gateway"));
 
     private ProblemDetails() {
     }
@@ -54,6 +56,20 @@ public final class ProblemDetails {
      */
     public static ProblemDetail conflict(String detail) {
         return build(HttpStatus.CONFLICT, detail);
+    }
+
+    /**
+     * Cria o ProblemDetail de 413.
+     */
+    public static ProblemDetail payloadTooLarge(String detail) {
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, detail);
+    }
+
+    /**
+     * Cria o ProblemDetail de 502.
+     */
+    public static ProblemDetail badGateway(String detail) {
+        return build(HttpStatus.BAD_GATEWAY, detail);
     }
 
     /**

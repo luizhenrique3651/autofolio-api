@@ -9,13 +9,17 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Endpoint do perfil público do usuário autenticado.
@@ -43,5 +47,25 @@ public class ProfileController {
     public ResponseEntity<ProfileResponse> update(@AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody UpdateProfileRequest request) {
         return ResponseEntity.ok(profileService.update(CurrentUser.id(jwt), request));
+    }
+
+    /**
+     * Envia a foto de perfil.
+     */
+    @Operation(summary = "Enviar foto de perfil",
+            description = "Multipart com o campo 'file' (PNG, JPG ou JPEG, até 5 MB; o conteúdo "
+                    + "é validado, não só a extensão). A imagem é enviada ao Cloudinary na pasta "
+                    + "profiles/ com recorte 400x400 e a URL https é salva no perfil (criado se "
+                    + "não existir). A foto anterior não é apagada.")
+    @ApiResponse(responseCode = "200", description = "Foto atualizada; perfil com a nova photoUrl")
+    @ApiResponse(responseCode = "400", description = "Arquivo ausente, vazio ou não é PNG/JPEG")
+    @ApiResponse(responseCode = "401",
+            description = "Token ausente, inválido, ou conta desativada")
+    @ApiResponse(responseCode = "413", description = "Arquivo maior que 5 MB")
+    @ApiResponse(responseCode = "502", description = "Falha ou timeout no Cloudinary")
+    @PostMapping(value = "/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ProfileResponse> uploadPhoto(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(profileService.updatePhoto(CurrentUser.id(jwt), file));
     }
 }
