@@ -64,16 +64,26 @@ public class TokenService {
     @Transactional(noRollbackFor = InvalidRefreshTokenException.class)
     public AccessTokenGrant refresh(String token) {
         var refreshToken = refreshTokenRepository.findByToken(token)
-                .orElseThrow(InvalidRefreshTokenException::new);
+                .orElseThrow(() -> {
+                    log.warn("Refresh recusado: token inexistente");
+                    return new InvalidRefreshTokenException();
+                });
         Instant now = clock.instant();
 
         if (!refreshToken.getExpiresAt().toInstant().isAfter(now)) {
             refreshTokenRepository.deleteTokenById(refreshToken.getId());
+            log.info("Refresh recusado: token expirado (userId={})",
+                    refreshToken.getUser().getId());
             throw new InvalidRefreshTokenException();
         }
         // Conta desativada recebe o mesmo 401 de refresh token revogado
         if (!refreshToken.getUser().isActive()) {
             log.warn("Refresh recusado: conta desativada (userId={})",
+                    refreshToken.getUser().getId());
+        }
+        if (refreshToken.isRevoked()) {
+            // Reuso de token já revogado: possível roubo
+            log.warn("Refresh recusado: token revogado (userId={})",
                     refreshToken.getUser().getId());
         }
         if (refreshToken.isRevoked() || !refreshToken.getUser().isActive()) {

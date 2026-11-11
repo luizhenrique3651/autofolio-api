@@ -4,7 +4,7 @@ Backend do **AutoFolio**, sistema para vendedores autônomos de veículos gerenc
 
 API REST stateless em **Java 21 + Spring Boot 3.3**, com PostgreSQL, Flyway, autenticação JWT e upload de mídia no Cloudinary.
 
-> **Status:** Fase 1 (MVP) em desenvolvimento. Sprints 0 e 1 (fundação e autenticação) concluídas. Veja o [roadmap](#-roadmap).
+> **Status:** Fase 1 (MVP) em desenvolvimento. Sprints 0 e 1 (fundação e autenticação) concluídas; Sprint 2 (perfil e veículos) em andamento. Veja o [roadmap](#-roadmap).
 
 ---
 
@@ -47,6 +47,8 @@ Organização **por domínio** (feature-based packaging), com camadas **Controll
 ```
 com.autofolio
 ├── auth          Cadastro, login, refresh token, recuperação e redefinição de senha
+│   └── security     ActiveAccountValidator (conta ativa no JwtDecoder)
+├── user          Conta e perfil do usuário autenticado (/users/me, /profile)
 ├── vehicle       Veículos e fotos                     (Sprint 2–3)
 ├── sale          Vendas e estorno                     (Sprint 3)
 ├── cashflow      Fluxo de caixa                       (Sprint 4)
@@ -54,11 +56,12 @@ com.autofolio
 ├── portfolio     Portfólio público                    (Sprint 5)
 ├── dashboard     KPIs e gráficos                      (Sprint 5)
 ├── report        Relatórios CSV/PDF                   (Sprint 6)
-├── config        Security, JWT, Clock, Async, Cloudinary, PasswordEncoder
+├── config        Security, JWT, Clock, Async, Cloudinary, PasswordEncoder, OpenApiConfig,
+│                 BusinessProperties (fuso do negócio), FrontendProperties (URL do front)
 └── shared
     ├── exception    GlobalExceptionHandler + factory ProblemDetails (RFC 7807)
-    ├── security     TokenHasher (SHA-256)
-    ├── validation   @StrongPassword
+    ├── security     CurrentUser (userId do JWT), TokenHasher (SHA-256)
+    ├── validation   @StrongPassword, @Slug, ImageValidator (PNG/JPEG pelo conteúdo)
     └── web          RequestIdFilter (X-Request-Id / MDC)
 ```
 
@@ -100,11 +103,27 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
 
 As rotas privadas exigem `Authorization: Bearer <accessToken>`.
 
+### Usuário (`/api/v1/users/me`, autenticada)
+
+| Método | Rota | Descrição | Respostas |
+|---|---|---|---|
+| `GET` | `/api/v1/users/me` | Dados do usuário autenticado e do perfil | `200`, `401` |
+| `PATCH` | `/api/v1/users/me/slug` | Altera o slug do portfólio; devolve o slug e um novo access token (o slug é claim do JWT) | `200`, `400`, `401`, `409` |
+| `PATCH` | `/api/v1/users/me/password` | Altera a senha (exige a senha atual; `401` também significa senha atual incorreta) e revoga os refresh tokens | `204`, `400`, `401` |
+| `DELETE` | `/api/v1/users/me` | Desativa a conta (soft delete; exige a senha; `401` também significa senha incorreta) e revoga os refresh tokens | `204`, `400`, `401` |
+
+### Perfil (`/api/v1/profile`, autenticada)
+
+| Método | Rota | Descrição | Respostas |
+|---|---|---|---|
+| `PUT` | `/api/v1/profile` | Substitui os dados editáveis do perfil (bio, WhatsApp, cidade, especialidades, anos de experiência) | `200`, `400`, `401` |
+| `POST` | `/api/v1/profile/photo` | Envia a foto (`multipart/form-data`, campo `file`; PNG ou JPEG, até 5 MB) ao Cloudinary e devolve o perfil com `photoUrl` | `200`, `400`, `401`, `413`, `502` |
+
 ### Veículos (`/api/v1/vehicles`, autenticada)
 
 | Método | Rota | Descrição | Respostas |
 |---|---|---|---|
-| `POST` | `/` | Cadastra veículo do usuário do JWT, sempre com `status: DRAFT` (um `status` no corpo é ignorado); devolve o veículo completo | `201`, `400`, `401` |
+| `POST` | `/api/v1/vehicles` | Cadastra veículo do usuário do JWT, sempre com `status: DRAFT` (um `status` no corpo é ignorado); devolve o veículo completo | `201`, `400`, `401` |
 
 Obrigatórios: `brand`, `model`, `yearFab` (1900 até o ano atual), `yearMod` (igual a `yearFab` ou o seguinte), `km` (≥ 0), `color`, `engine`, `transmission` (`MANUAL`, `AUTOMATIC`, `CVT`), `fuel` (`GASOLINE`, `ETHANOL`, `FLEX`, `DIESEL`, `ELECTRIC`, `HYBRID`, `CNG`), `condition` (`EXCELLENT`, `GOOD`, `REGULAR`) e `askingPrice` (> 0, até 2 casas). Opcional: `description`.
 
@@ -135,7 +154,7 @@ Todo erro responde `application/problem+json`:
 
 - `error` é o reason phrase HTTP e `path` a URI da requisição (também no 401 do resource server).
 - 400 de validação traz `errors`, lista de `{ "field": "email", "message": "..." }` (corpo, parâmetros e `ConstraintViolation`).
-- 404 (`EntityNotFoundException`: inexistente ou de outro usuário), 409 (`DataConflictException` e `DataIntegrityViolationException`, sempre genérico: sem constraint nem SQL) 500 (`"Erro interno — tente novamente."`) e 503 (banco indisponível ao validar a conta na autenticação). Enum inválido no corpo dá 400 com `errors` indicando o campo e os valores aceitos.
+- 404 (`EntityNotFoundException`: inexistente ou de outro usuário, [ADR-003](docs/adr/ADR-003-404-para-recurso-de-outro-usuario.md)), 409 (`DataConflictException` e `DataIntegrityViolationException`, sempre genérico: sem constraint nem SQL), 500 (`"Erro interno — tente novamente."`) e 503 (banco indisponível ao validar a conta na autenticação). Enum inválido no corpo dá 400 com `errors` indicando o campo e os valores aceitos.
 - O `detail` dos erros do Spring (parte ausente, tipo não suportado...) vem em português de `messages.properties`.
 - 404, 405, 406 e 415 seguem o mesmo formato, com `title` em português.
 - **`X-Request-Id`**: toda resposta devolve o header. O cliente pode enviar o próprio id (`[A-Za-z0-9._-]{1,64}`); caso contrário, a API gera um UUID. O mesmo id aparece no corpo dos erros (`requestId`) e em **todas as linhas de log** (`%X{requestId}`), inclusive nas tarefas `@Async`. Ao reportar um problema, informe esse id. O CORS libera o envio e a leitura do header pelo navegador (`allowedHeaders`/`exposedHeaders`).
@@ -148,7 +167,7 @@ Todo erro responde `application/problem+json`:
 - **Refresh token** opaco (UUID), validade de **30 dias**, persistido em `refresh_tokens`. Permite vários dispositivos e não é rotacionado.
 - **Senhas** com BCrypt força 12. A política (`@StrongPassword`) vale para cadastro e redefinição: mínimo de 8 caracteres, no máximo 72 bytes, com ao menos 1 número e 1 letra maiúscula.
 - **Sem enumeração de usuários**: login responde o mesmo 401 para e-mail inexistente e senha errada (inclusive no tempo de resposta), e `forgot-password` responde sempre 202.
-- **Token de redefinição**: UUID com validade de 1 hora, guardado apenas como **hash SHA-256** e consumido de forma atômica. Após a redefinição, todos os refresh tokens do usuário são revogados.
+- **Token de redefinição**: UUID com validade de 1 hora, guardado apenas como **hash SHA-256** e consumido de forma atômica. Após a redefinição, todos os refresh tokens do usuário e os demais tokens de reset pendentes são revogados.
 - **Logs sem dados sensíveis**: nunca registram token, hash completo, senha ou e-mail. Falhas são logadas com `userId` e tipo da exceção.
 - **CORS** liberado apenas para `FRONTEND_URL`. CSRF desabilitado (API stateless).
 
@@ -236,18 +255,22 @@ O Hibernate roda com `ddl-auto: validate`: quem altera o schema é sempre o Flyw
 ## 🧪 Testes
 
 ```bash
-mvn test                    # testes unitários e de controller
-mvn test -Dtest='*IT'       # testes de integração (PostgreSQL real via Testcontainers)
+# Comando oficial (DoD): unitários + integração na mesma JVM, em ordem aleatória (precisa do Docker)
+mvn test -Dtest='*Test,*IT' -Dsurefire.runOrder=random
+
+mvn test                    # só testes unitários e de controller (o padrão do surefire não roda os *IT)
+mvn test -Dtest='*IT'       # só testes de integração (PostgreSQL real via Testcontainers)
 mvn test -Pexternal-tests   # sob demanda: só os testes @Tag("external") (rede e credenciais reais)
+mvn verify                  # unitários + relatório JaCoCo + check de cobertura (>= 80%)
 ```
 
 - **Integração** usa Testcontainers com um PostgreSQL singleton compartilhado (`AbstractPostgresIT`). Precisa do Docker rodando e não toca no banco local.
 - **`ApplicationContextIT`** sobe o contexto completo sem profile e sem mocks, para garantir que todos os beans são criados.
 - Os testes nunca enviam e-mail de verdade.
-- O padrão do surefire não roda as classes `*IT` no `mvn test`. Rode-as com o segundo comando.
+- O padrão do surefire não roda as classes `*IT` no `mvn test`; use o comando oficial acima (ou `-Dtest='*IT'`).
 - `CloudinaryIntegrationTest` faz upload real e é `@Tag("external")`: o surefire exclui a tag por padrão (`test.excludedGroups`), então nenhum dos comandos acima o roda. Execute-o só com `mvn test -Pexternal-tests`. Tem timeout (60 s) e é ignorado se `CLOUDINARY_*` não estiverem no ambiente ou no `.env`. **Atenção na IDE:** o IntelliJ não aplica o filtro de tag do surefire ao rodar "All Tests", então quem tem `CLOUDINARY_*` no `.env` faz upload real. Para evitar, rode a suíte pelo Maven ou exclua a tag `external` na configuração de execução (Run Configuration → Tags: `!external`).
 
-Meta de qualidade (Definition of Done): cobertura ≥ 80% nos services.
+**Cobertura (JaCoCo):** o `mvn test` gera o relatório em `target/site/jacoco/index.html`, e o `mvn verify` falha se algum `*Service` (pacotes de domínio) ficar abaixo de **80% de linhas ou de branches**. O `CloudinaryIntegrationTest` (`@Tag("external")`) não entra na medição.
 
 **Checkstyle** (estilo Google com indentação de 4 espaços, regras em `config/checkstyle/checkstyle.xml`): roda automaticamente na fase `validate` (portanto em `mvn test`, `mvn package` etc.) e **falha o build** em qualquer violação, em `src/main` e `src/test`. Para rodar isolado:
 
@@ -263,7 +286,11 @@ Supressões justificadas ficam em `config/checkstyle/suppressions.xml`. Decisão
 
 ## 📐 Padrões de desenvolvimento
 
+**Agentes de IA:** comecem pelo [AGENTS.md](AGENTS.md) (o [CLAUDE.md](CLAUDE.md) o importa), que explica o discovery progressivo, as ADRs e o processo de entrega.
+
 As regras obrigatórias de engenharia (logs e rastreabilidade, contrato de erro, segurança, configuração, testes, qualidade e processo de entrega) estão na **[ADR-001](docs/adr/ADR-001-padroes-obrigatorios-de-engenharia.md)**. Decisões transversais novas entram como novas ADRs em `docs/adr/`.
+
+Pendências técnicas e débitos ficam em [docs/backlog.md](docs/backlog.md). Pontos em que a implementação diverge do roadmap por decisão consciente (AF-001 `master`, AF-015 `ProblemDetail`, AF-016 `yearMod` obrigatório, AF-014 502 do upload, AF-018/019 404 em vez de 403) estão na seção "Desvios conscientes do roadmap" da ADR-001 e na [ADR-003](docs/adr/ADR-003-404-para-recurso-de-outro-usuario.md).
 
 **Branches**
 
@@ -301,7 +328,7 @@ chore(AF-003): configure docker-compose local env
 |---|---|---|
 | 0 | Fundação: skeleton, Docker Compose, Flyway (schema completo), Cloudinary | ✅ Concluída |
 | 1 | Auth: Spring Security, register, login JWT, refresh, recuperação e redefinição de senha | ✅ Concluída |
-| 2 | Perfil do vendedor + CRUD de veículos | ⏳ Próxima |
+| 2 | Perfil do vendedor + CRUD de veículos | 🚧 Em andamento |
 | 3 | Fotos (Cloudinary) + registro de vendas e estorno | |
 | 4 | Fluxo de caixa + clientes (LGPD) | |
 | 5 | Portfólio público + dashboard de KPIs + e-mails | |

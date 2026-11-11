@@ -170,7 +170,7 @@ class ProfileServiceTest {
 
     @Test
     @DisplayName("Foto: corrida na criação do perfil (user_id único) repete a gravação uma vez")
-    void shouldRetrySaveOnConcurrentProfileCreation() {
+    void shouldRetrySaveOnConcurrentProfileCreation(CapturedOutput output) {
         var existing = UserProfile.builder().user(user).build();
         when(userService.loadUser(user.getId())).thenReturn(user);
         when(photoStorage.upload(user.getId(), PNG)).thenReturn(URL);
@@ -184,6 +184,8 @@ class ProfileServiceTest {
         var response = service.updatePhoto(user.getId(), file(PNG));
 
         assertThat(response.photoUrl()).isEqualTo(URL);
+        assertThat(output.getOut()).contains("Corrida no primeiro upload de foto")
+                .contains("userId=" + user.getId());
     }
 
     @Test

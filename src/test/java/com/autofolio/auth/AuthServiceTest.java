@@ -58,9 +58,10 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("Deve registrar um novo vendedor com sucesso")
-    void shouldRegisterNewSellerSuccessfully() {
+    void shouldRegisterNewSellerSuccessfully(CapturedOutput output) {
         var request = new RegisterRequest("Luiz", "luiz@example.com", "luiz-dev", "password123");
         var user = User.builder()
+                .id(UUID.randomUUID())
                 .email(request.email())
                 .name(request.name())
                 .slug(request.slug())
@@ -84,6 +85,8 @@ class AuthServiceTest {
         verify(userRepository, times(1)).save(any(User.class));
         verify(userProfileRepository, times(1)).save(any(UserProfile.class));
         verify(passwordEncoder, times(1)).encode(request.password());
+        assertThat(output.getOut()).contains("Usuário cadastrado (userId=" + user.getId() + ")")
+                .doesNotContain("luiz@example.com").doesNotContain("password123");
     }
 
     @Test
@@ -117,8 +120,8 @@ class AuthServiceTest {
     @Test
     @DisplayName("Deve autenticar com credenciais válidas e retornar os tokens")
     void shouldLoginSuccessfully() {
-        var user = User.builder().name("Luiz").email("luiz@example.com").password("hash")
-                .slug("luiz-dev").build();
+        var user = User.builder().id(UUID.randomUUID()).name("Luiz").email("luiz@example.com")
+                .password("hash").slug("luiz-dev").build();
         var tokens = new TokenPair("access", "refresh", 3600);
         when(userRepository.findByEmail("luiz@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("password123", "hash")).thenReturn(true);
@@ -133,7 +136,7 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("Deve lançar InvalidCredentialsException quando o e-mail não existe")
-    void shouldFailLoginWhenUserNotFound() {
+    void shouldFailLoginWhenUserNotFound(CapturedOutput output) {
         when(userRepository.findByEmail("x@example.com")).thenReturn(Optional.empty());
         when(passwordEncoder.matches(eq("password123"), anyString())).thenReturn(false);
 
@@ -143,6 +146,8 @@ class AuthServiceTest {
 
         verify(passwordEncoder).matches(eq("password123"), anyString());
         verify(tokenService, never()).issueTokens(any());
+        assertThat(output.getOut()).contains("Login recusado: e-mail não cadastrado")
+                .doesNotContain("x@example.com").doesNotContain("password123");
     }
 
     @Test
@@ -166,9 +171,9 @@ class AuthServiceTest {
 
     @Test
     @DisplayName("Deve lançar InvalidCredentialsException quando a senha está errada")
-    void shouldFailLoginWhenPasswordWrong() {
-        var user = User.builder().name("Luiz").email("luiz@example.com").password("hash")
-                .slug("luiz-dev").build();
+    void shouldFailLoginWhenPasswordWrong(CapturedOutput output) {
+        var user = User.builder().id(UUID.randomUUID()).name("Luiz").email("luiz@example.com")
+                .password("hash").slug("luiz-dev").build();
         when(userRepository.findByEmail("luiz@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("wrong", "hash")).thenReturn(false);
 
@@ -177,6 +182,9 @@ class AuthServiceTest {
                 .hasMessage("Credenciais inválidas.");
 
         verify(tokenService, never()).issueTokens(any());
+        assertThat(output.getOut())
+                .contains("Login recusado: senha incorreta (userId=" + user.getId() + ")")
+                .doesNotContain("luiz@example.com").doesNotContain("wrong");
     }
 
     @Test

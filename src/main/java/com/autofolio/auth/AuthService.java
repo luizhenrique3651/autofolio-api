@@ -78,6 +78,7 @@ public class AuthService {
                 savedUser.getSlug()
         );
 
+        log.info("Usuário cadastrado (userId={})", savedUser.getId());
         return new AuthResponse(tokens.accessToken(), tokens.refreshToken(), userSummary);
     }
 
@@ -90,12 +91,16 @@ public class AuthService {
             // Gasta o mesmo tempo de BCrypt para não revelar a existência da conta pelo tempo
             // de resposta
             passwordEncoder.matches(request.password(), DUMMY_HASH);
+            log.warn("Login recusado: e-mail não cadastrado");
             throw new InvalidCredentialsException();
         }
         boolean passwordMatches = passwordEncoder.matches(request.password(), user.getPassword());
         // Conta desativada recebe o mesmo 401 e o mesmo custo de BCrypt (ADR-001 §2.4)
         if (!user.isActive()) {
             log.warn("Login recusado: conta desativada (userId={})", user.getId());
+        } else if (!passwordMatches) {
+            // Sinal de força bruta contra uma conta existente
+            log.warn("Login recusado: senha incorreta (userId={})", user.getId());
         }
         if (!passwordMatches || !user.isActive()) {
             throw new InvalidCredentialsException();

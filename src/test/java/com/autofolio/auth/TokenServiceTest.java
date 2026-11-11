@@ -37,6 +37,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 @DisplayName("Testes Unitários - TokenService")
 class TokenServiceTest {
 
+    private static final String TOKEN = "tok-secreto-123";
+
     private final SecretKeySpec key = new SecretKeySpec(
             "0123456789abcdef0123456789abcdef".getBytes(StandardCharsets.UTF_8), "HmacSHA256");
     private final RefreshTokenRepository repository = mock(RefreshTokenRepository.class);
@@ -78,7 +80,7 @@ class TokenServiceTest {
         var user = user();
         storedToken(user, clock.instant().plusSeconds(60), false);
 
-        var response = tokenService.refresh("rt");
+        var response = tokenService.refresh(TOKEN);
 
         var jwt = decoderWithoutExpValidation().decode(response.accessToken());
         assertThat(jwt.getSubject()).isEqualTo(user.getId().toString());
@@ -90,21 +92,27 @@ class TokenServiceTest {
 
     @Test
     @DisplayName("Refresh: token inexistente lança InvalidRefreshTokenException")
-    void shouldRejectUnknown() {
-        when(repository.findByToken("x")).thenReturn(Optional.empty());
+    void shouldRejectUnknown(CapturedOutput output) {
+        when(repository.findByToken(TOKEN)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> tokenService.refresh("x"))
+        assertThatThrownBy(() -> tokenService.refresh(TOKEN))
                 .isInstanceOf(InvalidRefreshTokenException.class);
+        assertThat(output.getOut()).contains("Refresh recusado: token inexistente")
+                .doesNotContain(TOKEN).doesNotContain("userId");
     }
 
     @Test
     @DisplayName("Refresh: token revogado lança exceção e não é removido")
-    void shouldRejectRevoked() {
-        storedToken(user(), clock.instant().plusSeconds(60), true);
+    void shouldRejectRevoked(CapturedOutput output) {
+        var user = user();
+        storedToken(user, clock.instant().plusSeconds(60), true);
 
-        assertThatThrownBy(() -> tokenService.refresh("rt"))
+        assertThatThrownBy(() -> tokenService.refresh(TOKEN))
                 .isInstanceOf(InvalidRefreshTokenException.class);
         verify(repository, never()).deleteTokenById(any());
+        assertThat(output.getOut())
+                .contains("Refresh recusado: token revogado (userId=" + user.getId() + ")")
+                .doesNotContain("luiz@example.com").doesNotContain(TOKEN);
     }
 
     @Test
@@ -114,11 +122,11 @@ class TokenServiceTest {
         user.setActive(false);
         storedToken(user, clock.instant().plusSeconds(60), false);
 
-        assertThatThrownBy(() -> tokenService.refresh("rt"))
+        assertThatThrownBy(() -> tokenService.refresh(TOKEN))
                 .isInstanceOf(InvalidRefreshTokenException.class);
 
         assertThat(output.getOut()).contains("conta desativada (userId=" + user.getId() + ")")
-                .doesNotContain("luiz@example.com").doesNotContain("rt)");
+                .doesNotContain("luiz@example.com").doesNotContain(TOKEN);
     }
 
     @Test
@@ -138,12 +146,16 @@ class TokenServiceTest {
 
     @Test
     @DisplayName("Refresh: token expirado lança exceção e é removido")
-    void shouldRejectAndDeleteExpired() {
-        var rt = storedToken(user(), clock.instant().minusSeconds(1), false);
+    void shouldRejectAndDeleteExpired(CapturedOutput output) {
+        var user = user();
+        var rt = storedToken(user, clock.instant().minusSeconds(1), false);
 
-        assertThatThrownBy(() -> tokenService.refresh("rt"))
+        assertThatThrownBy(() -> tokenService.refresh(TOKEN))
                 .isInstanceOf(InvalidRefreshTokenException.class);
         verify(repository).deleteTokenById(rt.getId());
+        assertThat(output.getOut())
+                .contains("Refresh recusado: token expirado (userId=" + user.getId() + ")")
+                .doesNotContain("luiz@example.com").doesNotContain(TOKEN);
     }
 
     @Test
@@ -151,7 +163,7 @@ class TokenServiceTest {
     void shouldTreatBoundaryAsExpired() {
         var rt = storedToken(user(), clock.instant(), false);
 
-        assertThatThrownBy(() -> tokenService.refresh("rt"))
+        assertThatThrownBy(() -> tokenService.refresh(TOKEN))
                 .isInstanceOf(InvalidRefreshTokenException.class);
         verify(repository).deleteTokenById(rt.getId());
     }
@@ -162,10 +174,10 @@ class TokenServiceTest {
     }
 
     private RefreshToken storedToken(User user, Instant expiresAt, boolean revoked) {
-        var rt = RefreshToken.builder().id(UUID.randomUUID()).user(user).token("rt")
+        var rt = RefreshToken.builder().id(UUID.randomUUID()).user(user).token(TOKEN)
                 .revoked(revoked)
                 .expiresAt(OffsetDateTime.ofInstant(expiresAt, ZoneOffset.UTC)).build();
-        when(repository.findByToken("rt")).thenReturn(Optional.of(rt));
+        when(repository.findByToken(TOKEN)).thenReturn(Optional.of(rt));
         return rt;
     }
 

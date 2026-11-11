@@ -43,7 +43,14 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
    - mesmo 401 para e-mail inexistente e senha errada, inclusive no tempo de resposta;
    - `forgot-password` responde sempre 202;
    - mesma resposta para token inexistente, expirado ou revogado.
-5. **`DataIntegrityViolationException` vira 409 genérico**, sem nome de constraint nem SQL; o log WARN leva os tipos da exceção e da causa raiz, o nome da constraint e a origem (1º frame `com.autofolio`); a stacktrace, que traz o SQL com valores, só vai para DEBUG. **Recurso inexistente ou de outro usuário** lança `EntityNotFoundException` (404); o `getReferenceById` não é usado (a `jakarta.persistence.EntityNotFoundException` dele não tem mapeamento: referencie o dono por id, como no `Vehicle`). **`ConstraintViolationException`** só vira 400 quando a violação é de parâmetro de método; de retorno ou de entidade (pre-persist) é bug nosso e vira 500 com log ERROR. **Regra de validação que depende de contexto** (ex.: ano atual) lança `RequestValidationException` (400 com `errors`). **Falha de infraestrutura na autenticação** (banco fora ao checar a conta) responde 503 pelo entry point; o validador registra 1 ERROR com `userId` e os tipos da exceção, sem stacktrace nem mensagem, e a stacktrace vai para DEBUG (§1.8). **Enum inválido no JSON** dá 400 com `errors` (campo e valores aceitos); JSON sintaticamente inválido segue genérico. **O 500** responde "Erro interno — tente novamente.".
+5. **Mapeamento de exceções específicas:**
+   1. **`DataIntegrityViolationException` vira 409 genérico**, sem nome de constraint nem SQL. O log WARN leva os tipos da exceção e da causa raiz, o nome da constraint e a origem (1º frame `com.autofolio`); a stacktrace, que traz o SQL com valores, só vai para DEBUG.
+   2. **Recurso inexistente ou de outro usuário** lança `EntityNotFoundException` (404), conforme a [ADR-003](ADR-003-404-para-recurso-de-outro-usuario.md). O `getReferenceById` não é usado (a `jakarta.persistence.EntityNotFoundException` dele não tem mapeamento): referencie o dono por id, como no `Vehicle`.
+   3. **`ConstraintViolationException`** só vira 400 quando a violação é de parâmetro de método; de retorno ou de entidade (pre-persist) é bug nosso e vira 500 com log ERROR.
+   4. **Regra de validação que depende de contexto** (ex.: ano atual) lança `RequestValidationException` (400 com `errors`).
+   5. **Falha de infraestrutura na autenticação** (banco fora ao checar a conta) responde 503 pelo entry point; o validador registra 1 ERROR com `userId` e os tipos da exceção, sem stacktrace nem mensagem, e a stacktrace vai para DEBUG (§1.8).
+   6. **Enum inválido no JSON** dá 400 com `errors` (campo e valores aceitos); JSON sintaticamente inválido segue genérico.
+   7. **O 500** responde "Erro interno — tente novamente.".
 6. **O `detail` dos erros do Spring MVC é traduzido em `messages.properties`** (`problemDetail.<FQCN>`), sem mapear exceção a exceção no handler.
 7. **5xx gerado pelo Spring MVC** (ex.: `HttpMessageNotWritableException`) também sai em `ERROR` com stacktrace, uma vez, no `handleExceptionInternal`.
 
@@ -66,7 +73,7 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
 
 ### 5. Configuração
 
-1. **A API sobe sem profile.** Todo bean obrigatório precisa existir na configuração base, com defaults de dev quando fizer sentido. O profile `prod` exige credenciais sem default (fail-fast).
+1. **A configuração base (`application.yml`) só tem o que vale para todos os profiles.** Ela **não** define `spring.datasource` nem `cloudinary.*` (credenciais) e exige `JWT_SECRET`. Quem define banco e Cloudinary são os profiles: `dev` (com defaults de dev, onde fizer sentido) e `prod` (sem defaults, fail-fast). Sem profile, o contexto só sobe se `spring.datasource.*` e `cloudinary.*` forem passados por propriedade, como faz o `ApplicationContextIT`. Todo bean obrigatório novo deve resolver com esse conjunto mínimo (base + propriedades), nunca depender só de um profile.
 2. **Toda variável lida do `.env`** é mapeada explicitamente num yml (`chave: ${VARIAVEL:default}`). O `dotenv-java` grava System properties com o nome da variável, que não se ligam automaticamente a propriedades com ponto.
 3. **Cada configuração tem o default em um só lugar** (yml ou constante), nunca duplicado em `@Value`.
 4. **O `.env.example` lista todas as variáveis** usadas por qualquer profile, sem valores reais. O `.env` nunca é commitado nem editado por agentes.
@@ -76,11 +83,12 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
 ### 6. Testes
 
 1. **Testes de integração** usam Testcontainers sobre a base comum `AbstractPostgresIT` (PostgreSQL singleton). Nunca usam o banco local.
-2. **O `ApplicationContextIT`** sobe o contexto completo sem profile e sem mocks e deve continuar passando. Ele cobre o que mocks escondem, como beans ausentes.
+2. **O `ApplicationContextIT`** sobe o contexto completo sem profile (com `spring.datasource.*` e `cloudinary.*` por propriedade, §5.1) e sem mocks e deve continuar passando. Ele cobre o que mocks escondem, como beans ausentes.
 3. **Testes nunca enviam e-mail nem chamam serviço externo real.** Exceção conhecida: `CloudinaryIntegrationTest`, isolado com `@Tag("external")`: o surefire exclui a tag por padrão e ele só roda sob demanda com `mvn test -Pexternal-tests`. Tem `@Timeout` e é ignorado (Assumptions) sem as credenciais `CLOUDINARY_*`. Todo teste novo que chame serviço externo real deve usar a mesma tag.
 4. **Toda decisão de log e segurança tem teste:** formato do log sem dado pessoal, ramo de cada exceção, concorrência no consumo de tokens e `requestId` no corpo igual ao do header.
-5. **`mvn test` e `mvn test -Dtest='*IT'`** (todos juntos) passam antes de qualquer revisão.
+5. **O comando oficial** `mvn test -Dtest='*Test,*IT' -Dsurefire.runOrder=random` e o `mvn verify` (que cobra o check de cobertura da §6.7) passam antes de qualquer revisão.
 6. **Testes independentes de ordem e de ambiente.** A suíte inteira passa numa única JVM em ordem aleatória (`mvn test -Dtest='*Test,*IT' -Dsurefire.runOrder=random`), que é como a IDE roda. O bloco estático do `AutoFolioApplication` grava o `.env` como System properties para a JVM inteira. Por isso, teste que resolve configuração sem subir o contexto não pode usar as fontes `systemProperties`/`systemEnvironment`, nem depender de variável do SO.
+7. **Cobertura:** o JaCoCo roda no `mvn test` (relatório em `target/site/jacoco/index.html`) e o `mvn verify` exige no mínimo 80% de linhas e de branches em cada `*Service`. Teste vazio para inflar o número é proibido.
 
 ### 7. Qualidade estática
 
@@ -93,7 +101,7 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
 
 1. **Fluxo de toda task:**
    1. desenvolvimento;
-   2. revisão de **erros** no projeto inteiro;
+   2. revisão de **erros** no projeto inteiro, **sempre primeiro e sozinha**: as demais só começam depois do resultado dela;
    3. revisões paralelas de **arquitetura**, **performance** e **manutenibilidade** (o diff avaliado contra a codebase inteira);
    4. revisão geral do **tech lead**;
    5. **warnings**, com laço tech lead ↔ desenvolvedor;
@@ -103,6 +111,7 @@ As regras abaixo são **obrigatórias**. Revisões devem tratar qualquer violaç
 3. **Agentes nunca fazem commit, push, reset ou checkout de arquivos.** A cada task, o dono do repositório commita.
 4. **Antes do commit**, `git status` não pode ter arquivo da task fora do stage (use `git add -A` e confira). O commit precisa compilar e passar nos testes sozinho.
 5. **A mensagem de commit segue Conventional Commits** com o id do card: `feat(AF-XXX): ...`.
+6. **Várias tasks sem commit entre elas** (quando o dono do repositório autoriza): ao fim de cada task aprovada, grava-se um snapshot não destrutivo da árvore (`snap.sh <nome>`: índice temporário + `git write-tree`, sem tocar branch, índice ou working tree), e a revisão da task seguinte olha só o diff desde esse snapshot (`taskdiff.sh <snapshot>`). Ao final, o maestro entrega os comandos prontos para **um commit por task** (`git read-tree <tree-da-task>` + `git commit` em sequência e `git add -A` no último), depois de confirmar que o snapshot base é igual ao `HEAD`. Os scripts ficam em `~/.cache/egeon-autofolio/`.
 
 ## Options Considered
 
@@ -157,28 +166,16 @@ A Opção C troca um pequeno custo de manutenção por previsibilidade. Em tasks
 
 ## Action Items
 
-1. [x] Configurar o plugin de checkstyle com `google_checks` e zerar as violações.
-2. [ ] Configurar o `maven-failsafe-plugin` para os `*IT` rodarem em `mvn verify` (pré-requisito do CI na AF-043).
-3. [ ] Configurar `-javaagent` do Mockito no surefire.
-4. [x] Isolar o `CloudinaryIntegrationTest` da rede externa (resolvido: `@Tag("external")` + profile `external-tests`).
-5. [ ] Guardar o refresh token como hash SHA-256 (card próprio; alinha com §3.4).
-6. [ ] Índice único parcial para tokens de reset pendentes por usuário (forgot-password simultâneo).
-7. [ ] Limpeza global agendada (`@Scheduled`) de tokens expirados, com índice em `expires_at`.
-8. [ ] Invalidar o access token após a redefinição de senha (blacklist ou versionamento de token).
-9. [ ] Liberar `/actuator/health` para monitoramento externo (AF-042/AF-046).
-10. [x] `detail` dos erros do Spring em português via `messages.properties` (`problemDetail.<FQCN>`; resolvido na AF-015).
-11. [x] Tipar o `Map` cru do `CloudinaryConfig` (resolvido na AF-014: cast isolado com `@SuppressWarnings` pontual).
-12. [ ] Rate limit no forgot-password e limites do executor `@Async` (hardening).
-13. [ ] Padronizar a configuração tipada: migrar `JwtConfig` e `CloudinaryConfig` de `@Value` para `@ConfigurationProperties` com validação de obrigatoriedade e valor em branco, como já faz o `FrontendProperties`.
-14. [ ] Fixar a versão do Java no build (`maven-enforcer-plugin` com `requireJavaVersion [21,22)`). O Maven do Homebrew passou a rodar em Java 26, e o Byte Buddy do Mockito não o suporta, o que quebra os testes com `@MockBean`.
-15. [x] Centralizar a checagem de conta ativa (`active=true`) num único ponto da autenticação (resolvido na AF-016: `ActiveAccountValidator` no `JwtDecoder`, uma consulta `exists` por PK por requisição autenticada, sem cache). **Pendente para a Sprint 3:** o portfólio público deve filtrar `active=true`.
-16. [ ] Rate limit nos endpoints que confirmam senha (`DELETE /users/me`, `PATCH /users/me/password`), junto com o do login.
-17. [ ] Endpoint de reativação de conta e anonimização LGPD (Sprint 4, clientes/LGPD).
-18. [ ] Configurar `-Xlint:all` (e `showWarnings`) nos `compilerArgs` do `maven-compiler-plugin`, para que a §7.2 seja verificada no build e não só pelo revisor de warnings.
-19. [ ] Retry com backoff no upload ao Cloudinary (Spring Retry, recomendado pela skill de DevOps). Dependência nova: aguarda aprovação do dono do repositório (§5.5).
-20. [ ] Limitar o corpo das requisições no Nginx (`client_max_body_size` ~6 MB) na task de deploy (AF-042): o `server.tomcat.max-swallow-size` de 10 MB drena até 10 MB de requisição não autenticada.
-21. [ ] Limpeza das fotos antigas de perfil no Cloudinary (o upload novo não apaga a anterior, conforme o card da AF-014).
-22. [ ] Limitar uploads concorrentes por usuário.
-23. [ ] Migration futura: `NOT NULL` em `vehicles.status` (a V1 só tem `DEFAULT 'DRAFT'`).
-24. [ ] Sprint 3: índice `(user_id, status)` em `vehicles` para a listagem de veículos do vendedor.
-25. [ ] Task de deploy (AF-042): configurar `server.forward-headers-strategy` (framework ou native) para que o header `Location` e as URLs geradas usem host e scheme públicos atrás do Nginx/TLS.
+Os itens de acompanhamento (pendências, hardening e débitos) ficam em [docs/backlog.md](../backlog.md), com prioridade, sprint/card sugerido e status.
+
+## Desvios conscientes do roadmap
+
+Pontos em que a implementação diverge do texto do card, por decisão registrada:
+
+| Card | Roadmap diz | Implementado | Motivo |
+|---|---|---|---|
+| AF-001 | Branch de produção `main` | `master` | Branch já existente no repositório; renomear exige ajuste de proteção e remoto (ver backlog) |
+| AF-015 | Resposta `{ timestamp, status, error, message, path }` | `ProblemDetail` (RFC 7807) com `type`, `title`, `detail`, `error`, `path`, `timestamp`, `requestId` | Um único contrato de erro, padrão de mercado; ver §2.1 |
+| AF-016 | `yearMod` não detalhado como obrigatório | `yearMod` obrigatório (igual a `yearFab` ou o seguinte) | Evita veículo sem ano-modelo no portfólio; CHECK no banco (V6) |
+| AF-014 | Falhas de upload sem código definido | 502 em falha ou timeout do Cloudinary | A falha é de dependência externa, não do cliente nem nossa |
+| AF-018/019 | 403 para veículo de outro usuário | 404, igual a inexistente | Não revelar a existência do recurso; ver [ADR-003](ADR-003-404-para-recurso-de-outro-usuario.md) |

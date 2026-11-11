@@ -21,6 +21,9 @@ spring:
       enabled: true
 
   jpa:
+    hibernate:
+      # Valida entidade x migration em todos os profiles (e nos ITs, que rodam sem profile)
+      ddl-auto: validate
     open-in-view: false
 
   # Upload multipart (foto de perfil): 5 MB por arquivo; excedente vira 413 em ProblemDetail

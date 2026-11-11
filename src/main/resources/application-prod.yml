@@ -7,8 +7,6 @@ spring:
     driver-class-name: org.postgresql.Driver
 
   jpa:
-    hibernate:
-      ddl-auto: validate
     show-sql: false
 
   # Production Mail: exige as variáveis (sem defaults de dev); timeouts vêm do application.yml

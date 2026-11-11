@@ -15,7 +15,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
 /**
- * Ponto único da regra "só conta ativa autentica" (ADR-001, Action Items nº 15). Roda no
+ * Ponto único da regra "só conta ativa autentica" (AF-016; docs/backlog.md, histórico H5). Roda no
  * {@code JwtDecoder}, depois da assinatura e da expiração, só quando há Bearer (rotas públicas
  * ignoram o header).
  * Conta inexistente ou desativada, ou {@code sub} inválido, vira 401 pelo entry point do

@@ -66,6 +66,8 @@ public class ProfileService {
             saved = savePhotoUrl(user, url);
         } catch (DataIntegrityViolationException e) {
             // Dois primeiros uploads simultâneos: o outro criou o perfil (user_id é único)
+            log.info("Corrida no primeiro upload de foto; repetindo a gravação (userId={})",
+                    userId);
             saved = savePhotoUrl(user, url);
         }
         log.info("Foto de perfil atualizada (userId={})", userId);
